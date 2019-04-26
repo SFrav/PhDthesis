@@ -1,0 +1,454 @@
+
+
+%==============================================================================
+% TEMPLATE FOR THESIS WAGENINGEN UNIVERSITY
+% CREATED BY AREND LIGTENBERG JUNE 2006;
+% EDITED BY KIM CALDERS 2014;
+% EDITED BY BEN DEVRIES 2015;
+% EDITED BY LOIC DUTRIEUX 2016
+% EDITED BY SIMON FRAVAL 2018
+%==============================================================================
+
+\documentclass [a4paper,11pt,twoside]{book} %convert to booklet size through shell script
+%Text spans 14.3cm across
+
+%%%Additional packages by Simon
+%\usepackage{longtable} %split tables over multiple pages
+\usepackage{booktabs} %included for lines at the top and bottom of tables
+\usepackage{arydshln} %for dotted lines \hdashline
+%\usepackage{wrapfig} %for wraping test around figures or tables
+\usepackage{enumitem} %Used in chapter 2 for lists.
+\usepackage{upgreek} %Used for greek letters in chaper 3
+\usepackage[table]{xcolor} %for grey midrules. See here: https://tex.stackexchange.com/questions/317077/lighter-midrule %This needs to be above some other package below otherwise there is a clash. Probably with \usepackage{colour}
+
+%\usepackage[hidelinks]{hyperref} %Make all references clickable, but without a red box around it.
+%integrate this. See here: https://tex.stackexchange.com/questions/26529/how-can-i-generate-pdf-metadata-from-latex
+\usepackage[hidelinks, pdftex,
+            pdfauthor={Simon Fraval},
+            pdftitle={Food security in rural sub-Saharan Africa: A household level assessment of crop-livestock systems},
+            pdfsubject={Rural livelihoods},
+            pdfkeywords={Food security, micronutrients, livelihoods},
+            pdfproducer={Lualatex},
+            pdfcreator={Lualatex}]{hyperref}
+
+%%%%%%Original packages with notes from Simon
+%\usepackage[utf8]{inputenc} %use this if special characters are in the reference list.
+\usepackage[dutch,english]{babel}
+\usepackage{graphicx}
+\usepackage[authoryear]{natbib} %for reference management. Easy intext citation with \citealp, or \citet ect. %An alternative is to use biber: https://en.wikibooks.org/wiki/LaTeX/Bibliographies_with_biblatex_and_biber
+%\usepackage{bibentry} % bibentry for inserting complete BibTeX entries inline, explanation: http://stefaanlippens.net/bibentry
+%\nobibliography* % required by bibentry package;
+%\usepackage{luabibentry}
+%\setupbibentry{\jobname} %\jobname if named the same as main file %Enter chapter refs manually
+\usepackage{amsmath}
+\usepackage{fancyhdr}
+\usepackage[small,bf]{caption}
+%\captionsetup[table]{skip=10pt}
+\captionsetup{labelsep=space} % Just have a space after caption number. No colon. Can use labelsep=period too. See https://tex.stackexchange.com/questions/29181/figure-and-table-numbers-in-caption-are-terminated-by-a-period-and-semicolon
+\usepackage{multirow}
+\usepackage{threeparttable} % Good for adding notes to table.
+%\usepackage[body={6.0in, 8.2in},left=1.50in,right=1.50in]{geometry} %% very narrow
+\usepackage[top=3.35cm, bottom=3.35cm, left=2.5cm, right=2.5cm]{geometry}
+\usepackage[parfill]{parskip}
+\usepackage{pdfpages}
+\usepackage{color}
+\usepackage{appendix}
+
+% extra packages added by Ben
+\usepackage[figuresright]{rotating} %!Put rotate all sideways tables in the same direction with the top to the left
+\usepackage{changepage} % for indenting entire paragraphs
+\usepackage{float} % help with table positioning
+\floatstyle{plaintop} % caption on top
+\restylefloat{table} % see above. Use: \begin{table}[H]
+\usepackage{textcomp} % \textdegree
+\usepackage{csquotes} % for block quotes, use {displayquote} environment
+%\usepackage{todonotes}
+\usepackage{soul}
+\usepackage{fp}
+\usepackage{tabularx}
+\newcolumntype{Y}{>{\centering\arraybackslash}X} %centre columns in tabularx environment
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}} %left align fixed width column in tabular environment
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}} % center a fixed with column in tabular environment
+\usepackage{subcaption}
+\usepackage{pdflscape} %Use for sideways table with longtable
+\usepackage{hvfloat} %For rotating tables with more control
+\usepackage{gensymb}
+\usepackage[version=4]{mhchem}
+\usepackage{wrapfig}
+\usepackage{makecell} %For controlling text in a table cell. See: https://tex.stackexchange.com/questions/2441/how-to-add-a-forced-line-break-inside-a-table-cell
+\usepackage{lastpage} %To refer to the last page with automatic update
+\usepackage{lipsum} %For adding dummy text to the ducument - for testing purposes
+%\usepackage{pstricks} %For adding full page images between sections
+\usepackage{graphicx} %Full page image
+
+\providecommand\phantomsection{} %Hyperref to find the right page https://tex.stackexchange.com/questions/44088/when-do-i-need-to-invoke-phantomsection
+
+\addto\captionsenglish{\renewcommand{\bibname}{References}}
+
+
+
+\definecolor{Red}{rgb}{0.5,0,0}
+\definecolor{Blue}{rgb}{0,0,0.5}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%=======================================================================
+% GENERAL SETTINGS
+%=======================================================================
+
+\setlength{\captionmargin}{5pt}
+
+
+\linespread{1.15} %1 is single spacing, 1.3 is oneandhalf spacing
+
+%% for internal use
+\newcommand{\fixme}[1]{\emph{\marginpar{FIXME} (#1)}}
+\newcommand{\readme}[1]{\emph{\marginpar{README} (#1)}}
+\newcommand{\verifyme}[1]{\emph{\marginpar{VERIFYME} (#1)}}
+
+
+%=======================================================================
+% DEFINITION OF THE FANCY HEADERS %Revised S.F. 2018
+%=======================================================================
+\pagestyle{fancy}
+\renewcommand{\chaptermark}[1]{\markboth{#1}{}}
+\renewcommand{\sectionmark}[1]{\markright{\thesection\ #1}}
+\fancyhf{}
+\fancyhead[LE,RO]{\footnotesize\sffamily\thepage} %!\bfseries put before \thepage \rightmark \leftmark if you want a bold running head
+\fancyhead[LO]{\footnotesize\sffamily\rightmark} %!My preference was for a smaller running head with the same font and the headings
+\fancyhead[RE]{\footnotesize\sffamily\leftmark}
+%\fancyfoot[LE,CE,RE]{\scriptsize{Draft: June 2006}}
+%\fancyfoot[LO,CO,RO]{\scriptsize{Draft: June 2006}}
+\headheight 15pt
+
+\fancypagestyle{plain}{%
+\fancyhead{} % get rid of headers
+\renewcommand{\headrulewidth}{0pt} % and the line
+}
+\renewcommand{\headrulewidth}{0.4pt}
+%\renewcommand{\footrulewidth}{0.4pt}
+
+%!Does not work with LuaLATEX
+%\pdfinfo{
+ %  /Author (Simon Fraval)
+   %/Title  (Food security in rural sub-Saharan Africa: A household level assessment of crop-livestock systems)
+   %/CreationDate (D:Date)
+%}
+
+%=======================================================================
+% NEW ENVIRONMENT FOR THE START OF CHAPTER (SMALL ABSTRACT)
+%=======================================================================
+\newenvironment{chapintro}
+{
+    \begin{center}
+    \begin{minipage}[t]{0.9\textwidth}
+    \hrule
+    \medskip
+    \small
+}
+{
+    \medskip
+    \hrule
+    \end{minipage}
+    \end{center}
+    \bigskip
+}
+
+
+%=======================================================================
+% Adjust TOC  %Revised. S.F. 2018
+%=======================================================================
+
+%TOC text wrapping: https://tex.stackexchange.com/questions/394227/memoir-toc-indent-the-second-line-by-numberspace-width-in-the-previous-line-or
+%https://tex.stackexchange.com/questions/16032/how-do-i-indent-the-2nd-line-a-long-chapter-name-created-using-the-tocloft-packa
+%Align wrapped text
+%Add the word `Chapter' to the start
+%Add dots
+
+\usepackage{tocloft}
+
+\renewcommand{\cftbeforechapskip}{\baselineskip}      % allow spacing after each chapter/section entry
+\renewcommand{\contentsname}{Contents}
+%\addto\captionsenglish{\def\contentsname{Contents}} %! Needed for babel? https://tex.stackexchange.com/questions/35903/formatting-the-title-of-the-toc
+\renewcommand{\cfttoctitlefont}{\hfill\Large\bfseries\sffamily} %!some command to make the heading huge and bold
+\renewcommand{\cftaftertoctitle}{\hfill}
+\renewcommand{\cftbeforetoctitleskip}{-0.25in}        % Title is 1in from top
+\renewcommand{\cftaftertoctitleskip}{2.0\baselineskip}% 1 double space after title
+%\renewcommand{\cftaftertoctitle}{ \\[\baselineskip]\mbox{}\hfill{\normalfont Page}}
+\renewcommand{\cftchapfont}{\sffamily}                         % Can make it bold faced here
+\renewcommand{\cftchappagefont}{\sffamily}                         % Can make it bold faced here
+\renewcommand{\cftchapleader}{\cftdotfill{\cftchapdotsep}}
+\renewcommand{\cftchapdotsep}{\cftdotsep}             % Puts dots after chapter entries
+\renewcommand{\cftchappresnum}{Chapter\ }             %
+\renewcommand{\cftchapaftersnum}{}                    %
+\renewcommand{\cftsecleader}{\cftdotfill{\cftsecdotsep}}%
+\renewcommand{\cftchapnumwidth}{1in}
+
+
+%=======================================================================
+% A BIT MORE COMPACT ITEM LIST
+%=======================================================================
+\newenvironment{itemize*}%
+  {\begin{itemize}%
+    \setlength{\parskip}{0pt}%
+    \setlength{\itemsep}{0pt}%
+    \setlength{\parsep}{0pt}}%
+  {\end{itemize}}
+
+
+%=======================================================================
+% A BIT MORE COMPACT DESCRIPTION LIST
+%=======================================================================
+\renewcommand{\descriptionlabel}[1]{\hspace{\labelsep}\textrm{#1}}
+
+\newenvironment{description*}%
+  {\begin{description}%
+    \setlength{\itemsep}{0pt}%
+    \setlength{\parskip}{0pt}}%
+  {\end{description}}
+
+%=======================================================================
+% A BIT MORE COMPACT BIBLIOGRAPHY %Edited S.F. 2018
+%=======================================================================
+  \let\oldthebibliography=\thebibliography
+  \let\endoldthebibliography=\endthebibliography
+  \renewenvironment{thebibliography}[1]{%
+    \begin{oldthebibliography}{#1}%
+      \setlength{\parskip}{0ex}%
+      \setlength{\itemsep}{1ex}%
+  }%
+  {%
+    \end{oldthebibliography}%
+  }
+
+%Make reference list heading different from other chapters
+%https://tex.stackexchange.com/questions/148992/changing-the-heading-style-of-references-section
+\renewcommand{\refname}{References}
+\makeatletter
+\renewcommand\bibsection{\thispagestyle{empty} %No running head on page with title
+ \section*{{\Huge\rmfamily{\refname}}\@mkboth{\MakeUppercase{\refname}}{\MakeUppercase{\refname}}}%rmfamily is the main sans font
+}%
+\makeatother
+
+%For smaller font size in bib. See: https://tex.stackexchange.com/questions/329/how-to-change-font-size-for-bibliography
+\renewcommand*{\bibfont}{\small} %Or if you're using bibentry within the document so don't want this to be global, you can wrap like so: {\small\bibliography{fullReferenceList}}
+
+
+%=======================================================================
+% CLEAR HEADER STYLE ON LAST EMPTY ODD PAGES
+%=======================================================================
+\makeatletter
+\def\cleardoublepage{\clearpage\if@twoside \ifodd\c@page\else%
+\hbox{}%
+\thispagestyle{empty}%
+\newpage%
+\if@twocolumn\hbox{}\newpage\fi\fi\fi}
+\makeatother
+
+
+%=======================================================================
+% SOME EXTRA COMMANDS FOR VISUAL LAYOUT
+%=======================================================================
+\newcommand{\longpage}{\enlargethispage{\baselineskip}}
+\newcommand{\shortpage}{\enlargethispage{-\baselineskip}}
+\newcommand{\setreference}{\vspace*{\fill}}
+
+%=======================================================================
+% LIST ENVIRONMENT FOR OWN SELECTED PUBLICATIONS
+%=======================================================================
+\newenvironment{pubs}
+{
+\begin{list}{}
+{%
+\item[]}%
+\setlength{\itemindent}{-25pt}%
+\setlength{\parsep}{-0pt}
+\setlength{\itemsep}{-0pt}
+}%
+{\end{list}%
+}%
+
+
+%==============================
+% REFORMAT SECTION HEADINGS %Revised S.F. 2018
+%==============================
+
+%This only seems to make subsections smaller and adds a tiny bit of spacing above the headings. Remove if can reduce subsection font in a simpler way
+%% using titlesec
+\usepackage{titlesec}
+%% FIX FOR BUG in titlesec 2.10.1
+\usepackage{etoolbox}
+
+\makeatletter
+\patchcmd{\ttlh@hang}{\parindent\z@}{\parindent\z@\leavevmode}{}{}
+\patchcmd{\ttlh@hang}{\noindent}{}{}{}
+\makeatother
+% END OF BUGFIX
+
+%Change heading font to sans - sffamily
+\titleformat{\section}
+  {\bfseries\sffamily\Large}
+  {\thesection}{1em}{}
+\titleformat{\subsection}
+  {\normalsize\bfseries\sffamily}
+  {\thesubsection}{1em}{}
+\titleformat{\subsubsection}
+  {\normalsize\itshape\sffamily}
+  {\thesubsubsection}{1em}{}
+
+
+  %%%%%
+%Set spacing after subheadings and subsubheadings
+%Adopted from here https://tex.stackexchange.com/questions/53338/reducing-spacing-after-headings
+%\titlespacing{\section}{0pt}{\parskip}{-\parskip}
+\titlespacing{\subsection}{0pt}{\parskip}{-\parskip}
+\titlespacing{\subsubsection}{0pt}{\parskip}{-\parskip}
+
+%%%%%%%%%%%%%%
+% Fonts S.F
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%! This needs to be compiled with LuaLaTeX, otherwise you can't access system fonts
+% Nice suggestions from the 'thesiswhisperer': Garamond for headings and Helvetica for body. Or Minion Pro and Myriad Pro
+
+\usepackage{fontspec} %https://tex.stackexchange.com/questions/96631/how-do-i-set-the-document-body-to-be-times-new-roman-and-section-headings-to-be
+
+%\usepackage{titlesec} %uncomment if titlesec removed from the subheadings section
+\defaultfontfeatures{Ligatures=TeX}
+\setmainfont{Book Antiqua}  %Set body font ... Also tried Garamond and Junicode
+\setsansfont{TeX Gyre Heros}  %Set heading font % Tex Gyre https://www.fontsquirrel.com/fonts/tex-gyre-heros. Use this with \sffamily
+%You can specify the font size like so:
+%\titleformat*{\section}{\fontsize{16}{18}\bfseries\sffamily}
+%\titleformat*{\subsection}{\fontsize{14}{16}\bfseries\sffamily}
+%\titleformat*{\subsubsection}{\fontsize{12}{14}\bfseries\sffamily}
+%More details on font control here: https://www.overleaf.com/learn/latex/Font_sizes,_families,_and_styles#Font_families
+
+
+
+%==============================
+% Force start of newpage on left page
+%==============================
+\newcommand*\cleartoleftpage{%
+  \clearpage
+  \ifodd\value{page}\hbox{}\newpage\fi
+}
+
+
+
+
+%An alternative to my figure note hack?
+%\setlength{\belowcaptionskip}{0pt plus 3pt minus 0pt} %remove extra spece below caption. See here: https://tex.stackexchange.com/questions/45990/how-can-i-modify-vertical-space-between-figure-and-caption
+
+%=======================================================================
+% INCLUSION OF THE CONTENT
+%=======================================================================
+
+\raggedbottom % preferentially leaves whitespace at bottom of page instead of distributing throughout vertical space
+
+\begin{document}
+
+\frontmatter
+\pagenumbering{alph}
+\pagenumbering{roman}
+
+\include{000_Title}
+\cleardoublepage
+\cleardoublepage
+
+
+\include{000_abstract}
+
+\cleardoublepage
+
+\addtocontents{toc}{\protect\setcounter{tocdepth}{-1}} %Exclude reference to the TOC. Last answer to this post https://tex.stackexchange.com/questions/10943/how-to-remove-the-self-reference-of-the-toc-from-the-toc
+\tableofcontents
+\addtocontents{toc}{\protect\setcounter{tocdepth}{0}} %set depth to the levels of heading that you want to display. 3 = sub-sub headings included
+
+\pagenumbering{arabic} \setcounter{page}{1} %Page numbering starts from main matter
+
+
+%% Main Chapters
+\includepdf{ChapterPics/Ch1CLEANED.png}
+\mainmatter
+
+
+\setcounter{page}{1}
+\include{01_chapter1} % Introduction
+\include{02_RHOMIS}
+\include{03_DataQuality}
+\include{04_Lushoto}
+\includepdf{ChapterPics/Ch5Pound.JPG}
+\include{05_Burkina}
+\include{06_DietaryGapsSSA}
+\includepdf{ChapterPics/Ch7DiverseFood.png}
+\include{07_GeneralDiscussion}% Discussion
+
+\nocite{Lamanna, Stirling, Tavenner, Steinke} %Add submitted and accepted to reference list
+%\nocite{*} %!To incude all references. Do this to make sure everything that should be cited in-text is actually in there
+
+\backmatter %Remove chapter naming
+%Bibs. See here https://en.wikibooks.org/wiki/LaTeX/More_Bibliographies
+\bibliographystyle{model5-names} %Elsevier styles. Edited line 1007 to remove repetition of `doi:doi:'  %Changes all numnames to 200 so not truncated to et al. in bibliography
+%Retreived from here: https://github.com/Sweitse/BibliographyStyles
+%Alternatives: model2-names - excludes parentheses %!Other examples here %https://www.overleaf.com/learn/latex/Biblatex_bibliography_styles
+%Or make your own style: https://ctan.org/tex-archive/macros/latex/contrib/custom-bib/
+
+
+\bibliography{fullReferenceList} %! This is the bib file that you exported from Mendeley End note ect.
+\addcontentsline{toc}{chapter}{References}
+%For references at the end of each chapter, see this thread: https://tex.stackexchange.com/questions/87414/per-chapter-bibliographies-in-biblatex
+
+\includepdf{ChapterPics/ChapterRefNandi.png}
+
+\setcounter{table}{0}
+\setcounter{figure}{0}
+\renewcommand{\thetable}{A\arabic{table}}
+\renewcommand{\thefigure}{A\arabic{figure}}
+
+\include{AppendixA}
+
+\setcounter{table}{0}
+\setcounter{figure}{0}
+\renewcommand{\thetable}{B\arabic{table}}
+\renewcommand{\thefigure}{B\arabic{figure}}
+
+\include{AppendixB}
+
+\setcounter{table}{0}
+\setcounter{figure}{0}
+\renewcommand{\thetable}{C\arabic{table}}
+\renewcommand{\thefigure}{C\arabic{figure}}
+
+\include{AppendixC}
+
+
+\addcontentsline{toc}{chapter}{Acknowledgements}
+\include{001_Acknowledgements}
+
+\addcontentsline{toc}{chapter}{Summary}
+\include{002_Summary}
+\phantomsection
+
+\addcontentsline{toc}{chapter}{Muhtasari}
+\include{002_Summary_Kiswahili}
+\phantomsection
+
+\thispagestyle{empty}\cleartoleftpage
+
+
+%% Back Matter
+
+\addcontentsline{toc}{chapter}{About the author}
+\include{08_biography}
+\phantomsection
+
+
+\addcontentsline{toc}{chapter}{Education certificate}
+\include{09_TSP}
+\phantomsection
+
+\renewcommand{\headrulewidth}{0pt}
+\cleartoleftpage
+
+\addcontentsline{toc}{chapter}{Colophon}
+\thispagestyle{empty}\include{10_funding}
+\phantomsection
+\end{document}

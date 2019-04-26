@@ -1,0 +1,405 @@
+---
+title: "Lushoto stepping-up 2016"
+
+output: #rmarkdown::tufte_handout
+  word_document:
+    #reference_docx: template.docx
+---
+
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+clustered <- read.csv('20171009ClusteredData.csv')
+#clustered <- read.csv('20171005NewClustered.csv')
+#clustered <- read.csv('20171004ClusteredData.csv')
+library(dplyr)
+library(tidyr)
+library(tables)
+library(pander)
+library(ggplot2)
+library(cowplot)
+library(extrafont)
+library(ggridges)
+library(ggpubr)
+panderOptions("table.split.table", Inf)
+font_import(pattern="Garamond")
+loadfonts(device="win")
+options(scipen = 999)
+
+
+clustered$cluster <- gsub("\\b1\\b", "1_", clustered$cluster)
+clustered$cluster <- gsub("\\b2\\b", "2_", clustered$cluster)
+clustered$cluster <- gsub("\\b3\\b", "3_", clustered$cluster) 
+clustered$cluster <- gsub("\\b4\\b", "4_", clustered$cluster)
+# 
+clustered$cluster <- gsub("\\b4_\\b", "2.Rising livestock", clustered$cluster)
+clustered$cluster <- gsub("\\b3_\\b", "1.Rising high value crop", clustered$cluster)
+clustered$cluster <- gsub("\\b2_\\b", "3.Subsisting mixed", clustered$cluster)
+clustered$cluster <- gsub("\\b1_\\b", "4.Subsisting crops", clustered$cluster)
+
+# #clustered$cluster <- gsub("\\b_\\b", "6.Subsistence", clustered$cluster)
+# clustered$cluster <- gsub("\\b5_\\b", "3.Off-livestock", clustered$cluster)
+# clustered$cluster <- gsub("\\b4_\\b", "2.Stepping-up", clustered$cluster) 
+# clustered$cluster <- gsub("\\b6_\\b", "5.Hanging-staples", clustered$cluster)
+# clustered$cluster <- gsub("\\b2_\\b", "5.Hanging-staples", clustered$cluster) 
+# clustered$cluster <- gsub("\\b3_\\b", "4.Hanging-livestock", clustered$cluster)
+# clustered$cluster <- gsub("\\b1_\\b", "1.High-value", clustered$cluster)
+
+landOwnedhist <- gather(clustered[, c("landOwnedHa2015", "landOwnedHa2012")], Year, Hectares)
+landOwnedhist$Year <- gsub("landOwnedHa", "", landOwnedhist$Year)
+landOwnedhist <- subset(landOwnedhist, Hectares < 4)
+
+clustered$cropIncome2015 <- clustered$cropIncome2015US
+clustered$cropIncome2012 <- clustered$cropIncome2012US
+cropIncomehist <- gather(clustered[, c("cropIncome2015", "cropIncome2012")], Year, Income)
+cropIncomehist$Year <- gsub("cropIncome", "", cropIncomehist$Year)
+
+clustered$livestockIncome2015 <- clustered$livestockIncome2015US
+clustered$livestockIncome2012 <- clustered$livestockIncome2012US
+livestockIncomehist <- gather(clustered[, c("livestockIncome2015", "livestockIncome2012")], Year, Income)
+livestockIncomehist$Year <- gsub("livestockIncome", "", livestockIncomehist$Year)
+
+offIncomehist <- gather(clustered[, c("percOffIncome2015", "percOffIncome2012")], Year, OffFarmIncome)
+offIncomehist$OffFarmIncome <- offIncomehist$OffFarmIncome * 100
+offIncomehist$Year <- gsub("percOffIncome", "", offIncomehist$Year)
+
+FAhist <- gather(clustered[, c("FA2015SF", "FA2012SF")], Year, FA)
+FAhist$Year <- gsub("FA", "", FAhist$Year)
+FAhist$Year <- gsub("SF", "", FAhist$Year)
+
+# prodSys <- select(read.csv('ImpLite Ap2015/data/implite_tanzania/mainsurveyinfo.csv'), household.id, Production.System..see.lkpprodsys., Elevation..metres.)
+# clustered <- left_join(clustered, prodSys, by = c("hhid" = "household.id"))
+# clustered$elevation1400 <- as.factor(ifelse(clustered$Elevation..metres. >1400, 1, 0))
+# 
+# clustered$headGenderChange <- as.factor(ifelse(clustered$HHhead2012 == "Male" & clustered$HHhead2015 %in% c("Male", "Jointly"), 0, 
+#                           ifelse(clustered$HHhead2012 == "Female" & clustered$HHhead2015 %in% c("FemaleSingle", "FemaleTogether", "FemaleWorkaway", "Jointly"),0,
+#                           ifelse(is.na(clustered$HHhead2015),0,1))))
+
+themeTrunc <- theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=12, family = "EB Garamond 08"), axis.text.y = element_text(size=12, family = "EB Garamond 08"), axis.title.y = element_text(family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.position='none', axis.title.x = element_blank())
+```
+
+```{r, warning=FALSE, echo=F}
+pander(table(clustered$cluster))
+#pander(clusteringTableGatherTable) 
+```
+
+```{r, echo=F, fig.height=3, fig.width=9, warning=F}
+plot_grid(
+ggplot(landOwnedhist) + geom_density(aes(x = Hectares, fill=Year), alpha=.9) + scale_fill_grey(start = 0.5, end = .9) + theme_bw() + theme(axis.text.x = element_text(size = 12, family = "EB Garamond 08"), axis.text.y = element_text(size=12, family = "EB Garamond 08"), axis.title.x = element_text(family = "EB Garamond 08"), axis.title.y = element_text(family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.position='none') + ylab("Density of households") + xlab("Land owned (ha)") #y =..scaled..,
+,
+ggplot(cropIncomehist) + geom_density(aes(x = Income, fill=Year),alpha=.9) + scale_fill_grey(start = 0.5, end = .9) + theme_bw() + theme(axis.text.x = element_text(size = 12, family = "EB Garamond 08"), axis.text.y = element_text(size=12, family = "EB Garamond 08"), axis.title.x = element_text(family = "EB Garamond 08"), axis.title.y = element_text(family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.position='none') + ylab("Density of households") + xlab("Crop income (USD)") + coord_cartesian(xlim = c(-1, 1000))
+,
+ggplot(livestockIncomehist) + geom_density(aes(x = Income, fill=Year),alpha=.9) + scale_fill_grey(start = 0.5, end = .9) + theme_bw() + theme(axis.text.x = element_text(size = 12, family = "EB Garamond 08"), axis.text.y = element_text(size=12, family = "EB Garamond 08"), axis.title.x = element_text(family = "EB Garamond 08"), axis.title.y = element_text(family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.title = element_blank(), legend.text = element_text(size=10, family = "EB Garamond 08"), legend.position = c(0.9, 0.9)) + ylab("Density of households") + xlab("Livestock income (USD)")  + coord_cartesian(xlim = c(-1, 200))
+#ggplot(FAhist) + geom_density(aes(x = FA, fill=Year),alpha=.9) + scale_fill_grey(start = 0.5, end = .9) + theme_bw() + theme(axis.text.x = element_text(size = 12, family = "EB Garamond 08"), axis.text.y = element_text(size=12, family = "EB Garamond 08"), axis.title.x = element_text(family = "EB Garamond 08"), axis.title.y = element_text(family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.title = element_blank(), legend.text = element_text(size=10, family = "EB Garamond 08"), legend.position = c(0.9, 0.9)) + ylab("Density of households") + xlab("Food availability") + coord_cartesian(xlim = c(0, 100000))
+#clustered %>% ggplot(aes(x = diffCropDiv2, y = diffCropMktOriKcal*100)) + geom_point() + theme_bw() + theme(axis.text.x = element_text(size = 12, family = "EB Garamond 08"), axis.text.y = element_text(size=12, family = "EB Garamond 08"), axis.title.x = element_text(family = "EB Garamond 08"), axis.title.y = element_text(family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.position='none') + ylab("Difference - crop market participation (%)") + xlab("Difference in crop diversity")
+, align='hv', ncol = 3, labels=c('a', 'b', 'c'), hjust = -5, vjust=23, label_fontfamily = "EB Garamond 08") 
+```
+
+```{r, echo=F, fig.height=3, fig.width=8.3, warning=F}
+p1 <- ggplot(data = subset(clustered, diffCropIncomeUS < 2500), aes(diffCropMktOriKcal, diffCropIncomeUS)) + geom_point(pch = 19)  + xlab("Crop market participation (change in % kcal sold)") + ylab("Crop income (change in USD)") + coord_cartesian(ylim = c(-2000, 2000), xlim = c(-1, 1)) + theme_bw() + theme(axis.text.x = element_text(hjust = 1, size=12, family = "EB Garamond 08"), axis.text.y = element_text(size=12, family = "EB Garamond 08"), axis.title.y = element_text(family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.position='none', axis.title.x = element_blank()) + theme(axis.title.x = element_text(size=12, family = "EB Garamond 08"), axis.line = element_line(colour = "black", size = 0.5, linetype = 1,  lineend = "butt")) #+ geom_smooth(aes(group=1), method="lm", se=FALSE, color = "grey")
+
+p2 <- ggplot(data = clustered, aes(diffLvstMktOriKcal, diffLvstIncomeUS)) +  geom_point(pch = 19)  + xlab("Livestock market participation (change in % kcal sold)") + ylab("Livestock income (change in USD)") + coord_cartesian(ylim = c(-2000, 2000)) + theme_bw() + theme(axis.text.x = element_text(hjust = 1, size=12, family = "EB Garamond 08"), axis.text.y = element_text(size=12, family = "EB Garamond 08"), axis.title.y = element_text(family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.position='none', axis.title.x = element_blank()) + theme(axis.title.x = element_text(size=12, family = "EB Garamond 08"), axis.line = element_line(colour = "black", size = 0.5, linetype = 1,  lineend = "butt")) #+ geom_smooth(aes(group=1), method="lm", se=FALSE, color = "grey")
+
+plot_grid(
+
+p1 #+ annotate("text", x = 0.3, y = -1900, label = paste("r^2 == ", 0.0001), parse = T)
+,
+p2 #+ annotate("text", x = 0.3, y = -1900, label =paste("r^2 =="," 0.14"), parse = T)
+, align='hv', ncol = 2, labels=c('a', 'b'), hjust = -5, vjust=21, label_fontfamily = "EB Garamond 08")
+```
+
+
+```{r, echo=F, warning=F, message=F, comment=F}
+clusteringTable <- clustered %>% select(adult_eq2012, adult_eq2015, landOwnedHa2012, landOwnedHa2015, percOffIncome2012BusinessEmploy, percOffIncome2015BusinessEmploy, tlu2012SF, tlu2015SF, percLvstSold_kcal2012, percLvstSold_kcal2015, landCultivatedHa2012, landCultivatedHa2015, percCropSold_kcal2012, percCropSold_kcal2015, cropDiv2012, cropDiv2015b, percCropHighValMarketHa2012, percCropHighValMarketHa2015, cropLvstIntergr2012, cropLvstIntergr2015, cluster)
+colnames(clusteringTable) <- gsub("BusinessEmploy", "", colnames(clusteringTable))
+colnames(clusteringTable) <- gsub("SF", "", colnames(clusteringTable))
+colnames(clusteringTable) <- gsub("2015b", "2015", colnames(clusteringTable))
+clusteringTable$percOffIncome2015 <- clusteringTable$percOffIncome2015 * 100
+clusteringTable$percOffIncome2012 <- clusteringTable$percOffIncome2012 * 100
+clusteringTable$percCropSold_kcal2012 <- clusteringTable$percCropSold_kcal2012 *100
+clusteringTable$percCropSold_kcal2015 <- clusteringTable$percCropSold_kcal2015 *100
+clusteringTable$percLvstSold_kcal2012 <- clusteringTable$percLvstSold_kcal2012 *100
+clusteringTable$percLvstSold_kcal2015 <- clusteringTable$percLvstSold_kcal2015 *100
+clusteringTable$percCropHighValMarketHa2012 <- clusteringTable$percCropHighValMarketHa2012 *100
+clusteringTable$percCropHighValMarketHa2015 <- clusteringTable$percCropHighValMarketHa2015 *100
+
+clusteringTableGather <- clusteringTable %>% gather(variable, value, c(adult_eq2012, adult_eq2015, landOwnedHa2012, landOwnedHa2015, percOffIncome2012, percOffIncome2015, tlu2012, tlu2015, percLvstSold_kcal2012, percLvstSold_kcal2015, landCultivatedHa2012, landCultivatedHa2015, percCropSold_kcal2012, percCropSold_kcal2015, cropDiv2012, cropDiv2015, percCropHighValMarketHa2012, percCropHighValMarketHa2015, cropLvstIntergr2012, cropLvstIntergr2015))
+
+clusteringTableGather$variable <- gsub("201", "__201", clusteringTableGather$variable)
+clusteringTableGather <- separate(clusteringTableGather, variable, into=c("variable", "year"), sep="__")
+
+clusteringTableGather <- subset(clusteringTableGather, !is.na(value))
+clusteringTableGather$value <- round(clusteringTableGather$value, 2)
+clusteringTableGather$cluster <- as.factor(clusteringTableGather$cluster)
+clusteringTableGather$variable <- as.factor(clusteringTableGather$variable)
+clusteringTableGather$year <- as.factor(clusteringTableGather$year)
+
+
+
+clusterSummary <- group_by(clusteringTableGather, cluster, year, variable)
+clusterSummary <- summarise(clusterSummary, med = median(value, na.rm=T), iqr = IQR(value,na.rm=T))
+clusterSummary$tabVal <- paste(round(clusterSummary$med, 2), paste0("(", round(clusterSummary$iqr, 2),")"))
+clusterSummarySpread <-  spread(select(clusterSummary, -med, -iqr), cluster, tabVal, fill = 0, convert = FALSE)
+
+  
+clusterSummarySpread$variable <- factor(clusterSummarySpread$variable, levels = c("adult_eq", "landOwnedHa", "landCultivatedHa", "percCropSold_kcal", "cropDiv", "percCropHighValMarketHa", "tlu", "percLvstSold_kcal", "cropLvstIntergr", "percOffIncome" ))
+#clusterSummarySpread[with(clusterSummarySpread, order(year, variable)), ]
+clusterSummarySpread <- clusterSummarySpread[order(clusterSummarySpread$year, clusterSummarySpread$variable), ]
+
+
+```
+
+
+```{r, warning=FALSE, echo=F}
+pander(clusterSummarySpread)
+#pander(clusteringTableGatherTable) 
+```
+
+/*P 0.05, Kruskal-Wallace test H ??? H0 (no difference between groups), H > ??2 > 9.49, df = 4 
+/**P 0.01, Kruskal-Wallace test H ??? H0 (no difference between groups), H > ??2 > 13.28, df = 4 
+/**P 0.001, Kruskal-Wallace test H ??? H0 (no difference between groups), H > ??2 > 18.47, df = 4 
+^ % of kcal produced
+
+```{r, echo=F, warning=F, message=F, comment=F}
+clusteringTable <- clustered %>% select(adult_eq2012, adult_eq2015, landOwnedHa2012, landOwnedHa2015, percOffIncome2015BusinessEmploy, tlu2012SF, tlu2015SF, percLvstSold_kcal2012, percLvstSold_kcal2015, landCultivatedHa2012, landCultivatedHa2015, percCropSold_kcal2012, percCropSold_kcal2015, cropDiv2012, cropDiv2015b, percCropHighValMarketHa2012, percCropHighValMarketHa2015, cropLvstIntergr2012, cropLvstIntergr2015, cluster)
+colnames(clusteringTable) <- gsub("BusinessEmploy", "", colnames(clusteringTable))
+colnames(clusteringTable) <- gsub("SF", "", colnames(clusteringTable))
+colnames(clusteringTable) <- gsub("2015b", "2015", colnames(clusteringTable))
+clusteringTable$percOffIncome2015 <- clusteringTable$percOffIncome2015 * 100
+clusteringTable$percCropSold_kcal2012 <- clusteringTable$percCropSold_kcal2012 *100
+clusteringTable$percCropSold_kcal2015 <- clusteringTable$percCropSold_kcal2015 *100
+clusteringTable$percLvstSold_kcal2012 <- clusteringTable$percLvstSold_kcal2012 *100
+clusteringTable$percLvstSold_kcal2015 <- clusteringTable$percLvstSold_kcal2015 *100
+clusteringTable$percCropHighValMarketHa2012 <- clusteringTable$percCropHighValMarketHa2012 *100
+clusteringTable$percCropHighValMarketHa2015 <- clusteringTable$percCropHighValMarketHa2015 *100
+
+clusteringTableGather <- clusteringTable %>% gather(variable, value, c(adult_eq2012, adult_eq2015, landOwnedHa2012, landOwnedHa2015, percOffIncome2015, tlu2012, tlu2015, percLvstSold_kcal2012, percLvstSold_kcal2015, landCultivatedHa2012, landCultivatedHa2015, percCropSold_kcal2012, percCropSold_kcal2015, cropDiv2012, cropDiv2015, percCropHighValMarketHa2012, percCropHighValMarketHa2015, cropLvstIntergr2012, cropLvstIntergr2015))
+
+clusteringTableGather$variable <- gsub("201", "__201", clusteringTableGather$variable)
+clusteringTableGather <- separate(clusteringTableGather, variable, into=c("variable", "year"), sep="__")
+
+clusteringTableGather <- subset(clusteringTableGather, !is.na(value))
+clusteringTableGather$value <- round(clusteringTableGather$value, 2)
+clusteringTableGather$cluster <- as.factor(clusteringTableGather$cluster)
+clusteringTableGather$variable <- as.factor(clusteringTableGather$variable)
+clusteringTableGather$year <- as.factor(clusteringTableGather$year)
+
+
+
+clusterSummary <- group_by(clusteringTableGather, cluster, year, variable)
+clusterSummary <- summarise(clusterSummary, med = median(value, na.rm=T), iqr = IQR(value,na.rm=T))
+clusterSummary$tabVal <- paste(round(clusterSummary$med, 2), paste0("(", round(clusterSummary$iqr, 2),")"))
+clusterSummarySpread <-  spread(select(clusterSummary, -med, -iqr), cluster, tabVal, fill = 0, convert = FALSE)
+
+  
+clusterSummarySpread$variable <- factor(clusterSummarySpread$variable, levels = c("adult_eq", "landOwnedHa", "landCultivatedHa", "percCropSold_kcal", "cropDiv", "percCropHighValMarketHa", "tlu", "percLvstSold_kcal", "cropLvstIntergr", "percOffIncome" ))
+#clusterSummarySpread[with(clusterSummarySpread, order(year, variable)), ]
+clusterSummarySpread <- clusterSummarySpread[order(clusterSummarySpread$year, clusterSummarySpread$variable), ]
+
+
+```
+
+
+```{r, warning=FALSE, echo=F}
+#pander(clusterSummarySpread)
+#pander(clusteringTableGatherTable) 
+```
+
+
+
+```{r, echo=F, warning=F, message=F, comment=F}
+head_cluster <- round(prop.table(table(clustered$cluster, clustered$HHhead2015),1)*100, 0) # The '2' makes it by column
+headChange_cluster <- round(prop.table(table(clustered$cluster, clustered$headGenderChange),1)*100, 0)
+elevation_cluster <- round(prop.table(table(clustered$cluster, clustered$elevation1400),1)*100, 0)
+
+```
+
+
+```{r, warning=FALSE, echo=F}
+pander(pandoc.table(head_cluster, emphasize.rownames=F))
+```
+
+```{r, warning=FALSE, echo=F}
+pander(pandoc.table(headChange_cluster, emphasize.rownames=F))
+```
+
+```{r, warning=FALSE, echo=F}
+pander(pandoc.table(elevation_cluster, emphasize.rownames=F))
+```
+
+```{r, echo=F, warning=F, message=F, comment=F}
+clusteringTable <- clustered %>% select(HDDSbad2015, HDDSgood2015, HDDSpercOff, FA2012SF, FA2015SF, PPI2015, HFIAS2015, cropYieldIncome_ha2015US, livestockIncome2015US, cropStapleHa2015, percCropStapleHa2015, percCropBananaHa2015, fert_Ha2015, HHheadAge, debtPercIncome, cluster)
+
+clusteringTable$HDDSpercOff <- clusteringTable$HDDSpercOff * 100
+clusteringTable$percCropBananaHa2015 <- clusteringTable$percCropBananaHa2015 *100
+clusteringTable$percCropStapleHa2015 <- clusteringTable$percCropStapleHa2015 *100 
+clusteringTable$debtPercIncome <- clusteringTable$debtPercIncome *100
+
+clusteringTableGather <- clusteringTable %>% gather(variable, value, c(HDDSbad2015, HDDSgood2015, HDDSpercOff, FA2012SF, FA2015SF, PPI2015, HFIAS2015, cropYieldIncome_ha2015US, livestockIncome2015US, cropStapleHa2015, percCropStapleHa2015, percCropBananaHa2015, fert_Ha2015, HHheadAge, debtPercIncome))
+
+clusteringTableGather <- subset(clusteringTableGather, !is.na(value))
+clusteringTableGather$value <- round(clusteringTableGather$value, 2)
+
+clusterSummary <- group_by(clusteringTableGather, cluster, variable)
+clusterSummary <- summarise(clusterSummary, med = median(value, na.rm=T), iqr = IQR(value,na.rm=T))
+clusterSummary$tabVal <- paste(round(clusterSummary$med, 2), paste0("(", round(clusterSummary$iqr, 2),")"))
+clusterSummarySpread <-  spread(select(clusterSummary, -med, -iqr), cluster, tabVal, fill = 0, convert = FALSE)
+
+
+clusterSummarySpread$variable <- factor(clusterSummarySpread$variable, levels = c("HDDSgood2015", "HDDSbad2015", "PPI2015", "HFIAS2015", "FA2015SF", "cropYieldIncome_ha2015US", "livestockIncome2015US", "cropStapleHa2015", "percCropStapleHa2015", "percCropBananaHa2015", "fert_Ha2015", "debtPercIncome", "HDDSpercOff", "HHheadAge"))
+#clusterSummarySpread[with(clusterSummarySpread, order(year, variable)), ]
+clusterSummarySpread <- clusterSummarySpread[order(clusterSummarySpread$variable), ]
+
+
+```
+
+
+```{r, warning=FALSE, echo=F, comment=F}
+pander(clusterSummarySpread)
+```
+
+
+```{r, echo=F, warning=F, message=F, comment=F}
+clusteringFigure <- clustered %>% select(HDDSbad2012, HDDSgood2012, HDDSpercOff2012, FA2012SF, cropYieldIncome_ha2012US, livestockIncome2012US, cropStapleHa2012, percCropStapleHa2012, percCropBananaHa2012, fert_Ha2012, cropIncome2012US, HDDSbad2015, HDDSgood2015, HDDSpercOff, FA2015SF, PPI2015, HFIAS2015, cropYieldIncome_ha2015US, livestockIncome2015US, cropStapleHa2015, percCropStapleHa2015, percCropBananaHa2015, fert_Ha2015, HHheadAge, debtPercIncome, cropIncome2015US, cluster)
+
+clusteringFigure$percCropStapleHa2012 <- clusteringFigure$percCropStapleHa2012 *100
+clusteringFigure$percCropStapleHa2015 <- clusteringFigure$percCropStapleHa2015 *100
+clusteringFigure$percCropBananaHa2012 <- clusteringFigure$percCropBananaHa2012 *100
+clusteringFigure$percCropBananaHa2015 <- clusteringFigure$percCropBananaHa2015 *100
+clusteringFigure$HDDSpercOff2012 <- clusteringFigure$HDDSpercOff2012 *100
+clusteringFigure$HDDSpercOff2015 <- clusteringFigure$HDDSpercOff *100
+clusteringFigure$HDDSpercOff <- NULL
+
+clusteringFigureGather <- clusteringFigure %>% gather(variable, value, c(HDDSbad2012, HDDSgood2012, HDDSpercOff2012, FA2012SF, cropYieldIncome_ha2012US, livestockIncome2012US, cropStapleHa2012, percCropStapleHa2012, percCropBananaHa2012, fert_Ha2012, cropIncome2012US, HDDSbad2015, HDDSgood2015, HDDSpercOff2015, FA2015SF, PPI2015, HFIAS2015, cropYieldIncome_ha2015US, livestockIncome2015US, cropStapleHa2015, percCropStapleHa2015, percCropBananaHa2015, fert_Ha2015, HHheadAge, debtPercIncome, cropIncome2015US))
+
+clusteringFigureGather$variable <- gsub("201", "__201", clusteringFigureGather$variable)
+clusteringFigureGather <- separate(clusteringFigureGather, variable, into=c("variable", "year"), sep="__")
+clusteringFigureGather$year <- gsub("US", "", clusteringFigureGather$year)
+clusteringFigureGather$year <- gsub("SF", "", clusteringFigureGather$year)
+
+
+
+```
+
+Figure 3
+```{r farmIncome, echo=F, fig.height=4, fig.width=9, warning=F}
+plot_grid(
+#subset(clusteringFigureGather, variable == "cropYieldIncome_ha") %>% ggplot(aes(x= as.factor(cluster), y= value)) + geom_boxplot(aes(fill=year), outlier.shape = NA, width = 0.9) + ylab(expression(paste("Crop income (USD ha"^"-1",")"))) + coord_cartesian(ylim = c(0, 1000))  + scale_fill_grey(start = 0.8, end = 1) + themeTrunc
+#,
+subset(clusteringFigureGather, variable == "cropIncome") %>% ggplot(aes(x= as.factor(cluster), y= value)) + geom_boxplot(aes(fill=year), outlier.shape = NA, width = 0.9) + ylab(expression(paste("Crop income (USD household"^"-1",")"))) + coord_cartesian(ylim = c(0, 1000))  + scale_fill_grey(start = 0.8, end = 1) + themeTrunc
+,
+subset(clusteringFigureGather, variable == "livestockIncome") %>% ggplot(aes(x= as.factor(cluster), y= value))  + geom_boxplot(aes(fill=year), outlier.shape = NA, width = 0.9) + ylab(expression(paste("Livestock income (USD household"^"-1",")"))) + xlab("Cluster") + coord_cartesian(ylim = c(0, 500))  + scale_fill_grey(start = 0.8, end = 1) + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=12, family = "EB Garamond 08"), axis.text.y = element_text(size=12, family = "EB Garamond 08"), axis.title.y = element_text(family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.position = c(0.7, 0.9), axis.title.x = element_blank(), legend.title = element_blank(), legend.text = element_text(size=10, family = "EB Garamond 08"))
+, align='hv', ncol = 3, labels=c('a', 'b'), hjust = -5, vjust=23, label_fontfamily = "EB Garamond 08") 
+```
+
+Figure 4
+
+```{r performBoxplots, echo=F, fig.height=3, fig.width=9, warning=F}
+#library(coin)
+
+clustComb <- combn(levels(as.factor(clustered$cluster)), 2, simplify = F)
+
+plot_grid(
+subset(clusteringFigureGather, variable == "HDDSgood" & year == "2015") %>% ggplot(aes(x= as.factor(cluster), y= value)) + geom_boxplot(outlier.shape = NA, width = 0.9) + ylab("Diet Diversity Score in flush period") + coord_cartesian(ylim = c(0, 16)) + scale_y_continuous(breaks = c(2, 4, 6, 8, 10, 12))  + scale_fill_grey(start = 0.8, end = 1) + themeTrunc + theme(axis.text.x = element_blank(), axis.line = element_line(colour = "black", size = 0.5, linetype = 1,  lineend = "butt")) + stat_compare_means(comparisons = clustComb[c(3,5)], method = "wilcox.test", label = "p.signif") # + stat_compare_means(label.y = 1, method = "kruskal.test") 
+,
+subset(clusteringFigureGather, variable == "HDDSbad" & year == "2015") %>% ggplot(aes(x= as.factor(cluster), y= value)) + geom_boxplot(outlier.shape = NA, width = 0.9) + ylab("Diet Diversity Score in lean period") + xlab("Cluster") + coord_cartesian(ylim = c(0, 16)) + scale_y_continuous(breaks = c(2, 4, 6, 8, 10, 12))  + scale_fill_grey(start = 0.8, end = 1) + themeTrunc + theme(axis.text.x = element_blank(), axis.line = element_line(colour = "black", size = 0.5, linetype = 1,  lineend = "butt")) + stat_compare_means(comparisons = clustComb[c(5,6)], method = "wilcox.test", label = "p.signif")
+,
+subset(clusteringFigureGather, variable == "FA" & year == "2015" & !is.infinite(value)) %>% ggplot(aes(x= as.factor(cluster), y= value)) + geom_boxplot(outlier.shape = NA, width = 0.9) + ylab(expression(paste("Food availability (kcal adult equivalent"^"-1","day"^"-1", ")")))  + scale_fill_grey(start = 0.8, end = 1) + themeTrunc + theme(axis.text.x = element_blank(), axis.line = element_line(colour = "black", size = 0.5, linetype = 1,  lineend = "butt")) + coord_cartesian(ylim = c(0, 12000)) + stat_compare_means(comparisons = clustComb[c(2,3,4,5)], method = "wilcox.test", label = "p.signif") #  
+, align='hv', ncol = 3, labels='auto', hjust = -5, vjust=23, label_fontfamily = "EB Garamond 08") 
+
+```
+
+```{r, echo=F, fig.height=3, fig.width=9, warning=F}
+plot_grid(
+subset(clusteringFigureGather, variable == "HFIAS") %>% ggplot(aes(x= as.factor(cluster), y= value)) + geom_boxplot(outlier.shape = NA, width = 0.9) + ylab("Food Insecurity Access Score") + xlab("Cluster")  + coord_cartesian(ylim = c(0, 40)) + scale_fill_grey(start = 0.8, end = 1) + themeTrunc  + theme(axis.title.x = element_blank(), axis.line = element_line(colour = "black", size = 0.5, linetype = 1,  lineend = "butt")) + stat_compare_means(comparisons = clustComb[c(2,3)], method = "wilcox.test", label = "p.signif") #+ stat_compare_means(label.y = 1, method = "kruskal.test")
+,
+subset(clusteringFigureGather, variable == "PPI") %>% ggplot(aes(x= as.factor(cluster), y= value)) + geom_boxplot(outlier.shape = NA, width = 0.9) + ylab("Progress out of poverty Index") + coord_cartesian(ylim = c(0, 100)) + scale_fill_grey(start = 0.8, end = 1) + themeTrunc + theme(axis.title.x = element_blank(), axis.line = element_line(colour = "black", size = 0.5, linetype = 1,  lineend = "butt")) + stat_compare_means(comparisons = clustComb, method = "wilcox.test", label = "p.signif")
+, align='hv', ncol = 3, labels=c('d', 'e'), hjust = -4, vjust=16, label_fontfamily = "EB Garamond 08") 
+```
+
+#Alt thesis
+```{r performBoxplotsThesis, echo=F, fig.height=8, fig.width=10, warning=F}
+#library(coin)
+
+clustComb <- combn(levels(as.factor(clustered$cluster)), 2, simplify = F)
+
+plot_grid(
+subset(clusteringFigureGather, variable == "HDDSgood" & year == "2015") %>% ggplot(aes(x= as.factor(cluster), y= value)) + geom_boxplot(outlier.shape = NA, width = 0.9) + ylab("Diet Diversity Score in flush period") + coord_cartesian(ylim = c(0, 16)) + scale_y_continuous(breaks = c(2, 4, 6, 8, 10, 12))  + scale_fill_grey(start = 0.8, end = 1) + themeTrunc + theme(axis.text.x = element_blank(), axis.line = element_line(colour = "black", size = 0.5, linetype = 1,  lineend = "butt")) + stat_compare_means(comparisons = clustComb[c(3,5)], method = "wilcox.test", label = "p.signif") # + stat_compare_means(label.y = 1, method = "kruskal.test") 
+,
+subset(clusteringFigureGather, variable == "HDDSbad" & year == "2015") %>% ggplot(aes(x= as.factor(cluster), y= value)) + geom_boxplot(outlier.shape = NA, width = 0.9) + ylab("Diet Diversity Score in lean period") + xlab("Cluster") + coord_cartesian(ylim = c(0, 16)) + scale_y_continuous(breaks = c(2, 4, 6, 8, 10, 12))  + scale_fill_grey(start = 0.8, end = 1) + themeTrunc + theme(axis.text.x = element_blank(), axis.line = element_line(colour = "black", size = 0.5, linetype = 1,  lineend = "butt")) + stat_compare_means(comparisons = clustComb[c(5,6)], method = "wilcox.test", label = "p.signif")
+,
+subset(clusteringFigureGather, variable == "FA" & year == "2015" & !is.infinite(value)) %>% ggplot(aes(x= as.factor(cluster), y= value)) + geom_boxplot(outlier.shape = NA, width = 0.9) + ylab(expression(paste("Food availability (kcal adult equivalent"^"-1","day"^"-1", ")")))  + scale_fill_grey(start = 0.8, end = 1) + themeTrunc + theme(axis.text.x = element_blank(), axis.line = element_line(colour = "black", size = 0.5, linetype = 1,  lineend = "butt")) + stat_compare_means(comparisons = clustComb[c(2,3,4,5)], method = "wilcox.test", label = "p.signif")  + coord_cartesian(ylim = c(0, 12000)) 
+, 
+subset(clusteringFigureGather, variable == "HFIAS") %>% ggplot(aes(x= as.factor(cluster), y= value)) + geom_boxplot(outlier.shape = NA, width = 0.9) + ylab("Food Insecurity Access Score") + xlab("Cluster")  + coord_cartesian(ylim = c(0, 40)) + scale_fill_grey(start = 0.8, end = 1) + themeTrunc  + theme(axis.title.x = element_blank(), axis.line = element_line(colour = "black", size = 0.5, linetype = 1,  lineend = "butt")) + stat_compare_means(comparisons = clustComb[c(2,3)], method = "wilcox.test", label = "p.signif") #+ stat_compare_means(label.y = 1, method = "kruskal.test")
+,
+subset(clusteringFigureGather, variable == "PPI") %>% ggplot(aes(x= as.factor(cluster), y= value)) + geom_boxplot(outlier.shape = NA, width = 0.9) + ylab("Progress out of poverty Index") + coord_cartesian(ylim = c(0, 100)) + scale_fill_grey(start = 0.8, end = 1) + themeTrunc + theme(axis.title.x = element_blank(), axis.line = element_line(colour = "black", size = 0.5, linetype = 1,  lineend = "butt")) + stat_compare_means(comparisons = clustComb, method = "wilcox.test", label = "p.signif")
+, align='hv', ncol = 3, labels='auto', hjust = -4, vjust=23, label_fontfamily = "EB Garamond 08") 
+```
+
+```{r, echo=F, warning=F, message=F}
+clusteringTable <- clustered %>% select(ExpectationOff_quit_rLand, ExpectationSame, ExpectationIncrLand, ExpectationIncrLand, ExpectationIncrCrop, ExpectationIncrLivestock, cluster)
+
+clusteringTableGather <- clusteringTable %>% gather(variable, value, c(ExpectationOff_quit_rLand, ExpectationSame, ExpectationIncrLand, ExpectationIncrLand, ExpectationIncrCrop, ExpectationIncrLivestock))
+clusteringTableGather <- subset(clusteringTableGather, !is.na(value))
+
+expectations_cluster <- group_by(clusteringTableGather, cluster, variable) %>% summarise(n = n(), f = sum(value)) %>%  mutate(perc = round((f / n)*100, 0))
+expectations_cluster <- spread(select(expectations_cluster, -f, -n), cluster, perc)
+
+
+#expectations_cluster <- round(prop.table(table(clusteringTableGather$variable, clusteringTableGather$cluster),2)*100, 0) # The '2' makes it by column
+```
+
+```{r, warning=FALSE, echo=F}
+pander(expectations_cluster)
+```
+
+
+
+
+
+######### Sup
+```{r, echo=F, warning=F, message=F, comment=F}
+clusteringFigure <- clustered %>% select(Soc5cm, N15cm, Ph5cm, ElecC5cm, aveNDVI2012, aveNDVI2015, cluster)
+
+
+clusteringFigureGather <- clusteringFigure %>% gather(variable, value, c(Soc5cm, N15cm, Ph5cm, ElecC5cm, aveNDVI2012, aveNDVI2015))
+
+clusteringFigureGather$variable <- gsub("201", "__201", clusteringFigureGather$variable)
+clusteringFigureGather <- separate(clusteringFigureGather, variable, into=c("variable", "year"), sep="__")
+
+themeTrunc <- theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=12, family = "EB Garamond 08"), axis.text.y = element_text(size=12, family = "EB Garamond 08"), axis.title.x = element_text(family = "EB Garamond 08"), axis.title.y = element_text(family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.position='none')
+
+```
+
+```{r, echo=F, fig.height=3, fig.width=8, warning=F}
+plot_grid(
+subset(clusteringFigureGather, variable == "aveNDVI") %>% ggplot(aes(x= as.factor(cluster), y= value, fill=year)) + geom_boxplot(outlier.shape = NA, width = 0.9) + ylab("Enhanced Vegetation Index (annual)")  + scale_fill_grey(start = 0.8, end = 1) + themeTrunc + theme(axis.title.x = element_blank()) + theme(strip.text.x = element_blank(), strip.background = element_rect(colour="white", fill="white"), legend.position=c(-.15,1), legend.text = element_text(family="EB Garamond 08"))
+,
+subset(clusteringFigureGather, variable == "Soc5cm") %>% ggplot(aes(x= as.factor(cluster), y= value)) + geom_boxplot(outlier.shape = NA, width = 0.9) + ylab("Soil organic carbon at 5cm (g/kg)") + xlab("Cluster")  + scale_fill_grey(start = 0.8, end = 1) + themeTrunc + theme( axis.title.x = element_blank())
+,
+subset(clusteringFigureGather, variable == "N15cm") %>% ggplot(aes(x= as.factor(cluster), y= value)) + geom_boxplot(outlier.shape = NA, width = 0.9) + ylab("Nitrogen at 15cm (g/kg)") + xlab("Cluster")  + scale_y_continuous(labels = function(x) format(x, big.mark = ",", scientific = FALSE))  + scale_fill_grey(start = 0.8, end = 1) + themeTrunc + theme(axis.title.x = element_blank())
+,
+subset(clusteringFigureGather, variable == "Ph5cm") %>% ggplot(aes(x= as.factor(cluster), y= value)) + geom_boxplot(outlier.shape = NA, width = 0.9) + ylab("pH") + xlab("Cluster")  + scale_y_continuous(labels = function(x) format(x, big.mark = ",", scientific = FALSE))  + scale_fill_grey(start = 0.8, end = 1) + themeTrunc + theme(axis.title.x = element_blank())
+, align='hv', ncol = 4, labels=c("i", "ii", "iii", "iv"), hjust = -2, vjust=21)
+
+```
+
+
+#Alternative plots for Fig 4.
+```{r ridgePolts, echo=F, fig.height=3, fig.width=15, warning=F}
+plot_grid(
+clustered %>% ggplot(aes(y= as.factor(cluster), x= HDDSgood2015)) + geom_density_ridges() + xlab("Diet diversity Score in flush period") + ylab("Cluster") + coord_cartesian(xlim = c(0, 12)) + themeTrunc # + scale_y_discrete(expand = c(0.01, 0)) + scale_x_continuous(expand = c(0.01, 0)) 
+,
+clustered %>% ggplot(aes(y= as.factor(cluster), x= HDDSbad2015)) + geom_density_ridges() + xlab("Diet Diversity Score in lean period") + ylab("Cluster") + coord_cartesian(xlim = c(0, 12)) + themeTrunc + theme(axis.text.y = element_blank(), axis.title.y = element_blank()) + scale_y_discrete(expand = c(0.01, 0)) + scale_x_continuous(expand = c(0.01, 0))
+,
+subset(clustered, !is.infinite(FA2015SF)) %>% ggplot(aes(y= as.factor(cluster), x= FA2015SF)) + geom_density_ridges() + xlab(expression(paste("Food Availability (kcal adult equivalent"^"-1","day"^"-1"))) + ylab("Cluster") + coord_cartesian(xlim = c(0, 20000)) + themeTrunc + theme(axis.text.y = element_blank(), axis.title.y = element_blank()) + theme(strip.text.y = element_blank(), strip.background = element_rect(colour="white", fill="white")) # + scale_y_discrete(expand = c(0.01, 0)) + scale_x_continuous(expand = c(0.01, 0))
+, align='hv', ncol = 3, labels=c('a', 'b', 'c'), hjust = -4.5, vjust=16,  label_fontfamily = "EB Garamond 08", rel_widths = c(1,1,1))
+```
+
+```{r ridgePolts2, echo=F, fig.height=3, fig.width=9, warning=F}
+plot_grid(
+subset(clustered, !is.infinite(HFIAS2015)) %>% ggplot(aes(y= as.factor(cluster), x= HFIAS2015)) + geom_density_ridges(rel_min_height = 0.00) + xlab("Food Security of Access Score") + ylab("Cluster") + theme_ridges() + scale_y_discrete(expand = c(0.01, 0)) + scale_x_continuous(expand = c(0.01, 0)) + coord_cartesian(xlim = c(0, 30)) # + theme_ridges()
+,
+clustered %>% ggplot(aes(y= as.factor(cluster), x= PPI2015)) + geom_density_ridges(rel_min_height = 0.00) + xlab("Progress out of Poverty Index") + ylab("Cluster") + theme_ridges() + scale_y_discrete(expand = c(0.01, 0)) + scale_x_continuous(expand = c(0.01, 0)) + theme(axis.text.y = element_blank(), axis.title.y = element_blank()) + theme(strip.text.y = element_blank(), strip.background = element_rect(colour="white", fill="white")) + coord_cartesian(xlim = c(0, 90)) #+ theme_ridges() 
+, align='hv', ncol = 3, labels=c('d', 'e'), hjust = -1, vjust=21, label_fontfamily = "EB Garamond 08", rel_widths = c(1.5,1)) 
+
+```

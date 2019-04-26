@@ -1,0 +1,366 @@
+---
+title: "Burkina"
+output: word_document
+---
+
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(pander)
+library(coin)
+library(extrafont)
+library(cowplot)
+library(brms)
+library(ggpubr)
+panderOptions("table.split.table", Inf)
+#font_import(pattern="Garamond")
+#loadfonts(device="win")
+options(scipen = 999)
+
+load("Analysis/resubmitRegress_pooledv9.RData")
+#load('Analysis/modHDDSbad_farm_off.rda')
+load("Nov2017modelsFullManuscriptBESTtable1.RData")
+
+#dat$offIncome_US[dat$offIncome_US == 0] <- NA #Remove 0 for Off income
+#dat$lvstsoldProtein_perc[dat$lvstProdDiv == 0] <- NA #Remove 0 if no livestock produced
+#dat$cropIncome_US[dat$cropIncome_US == 0.01] <- 0
+
+datSel <- select(dat, siteProv, adult_equivalent, land_area..ha., tlu, offIncome_US, femaleIncomeControl_perc, PPI_score, cropDiv, cropHDDSDiv, lvstDiv, lvstHDDSDiv, cropsoldKcal_perc, cropConsKcal1Aeq, cropIncome_US, lvstsoldProtein_perc, sorghumYield, milletYield, maizeYield, liveAnimalProfitUS, lvstProdProfitUS, lvstConsprotein1Aeq) 
+# datSel$siteProv <- as.factor(datSel$siteProv)
+
+BEST$sigLevel <- ifelse(BEST$lower > -0.001 & BEST$upper > -0.001 & BEST$rhat < 1.1, " *", ifelse(BEST$lower < 0.001 & BEST$upper < 0.001, " *", "NS"))
+
+# wilcoxPval <- data.frame(var = rep(NA, length(datSel)-1), wilcoxPval = rep(NA, length(datSel)-1))
+# for(i in 2:length(datSel)){
+# fmla <- formula(paste(names(datSel)[i], " ~ siteProv"))
+# wilcoxPval$var[i-1] <- names(datSel)[i]
+# wilcoxPval$wilcoxPval[i-1] <- pvalue(wilcox_test(fmla, data = datSel, paired = FALSE, exact = T))
+# }
+# 
+# wilcoxPval$sigLevel <- ifelse(wilcoxPval$wilcoxPval < 0.05 & wilcoxPval$wilcoxPval > 0.01, "*",
+#                               ifelse(wilcoxPval$wilcoxPval < 0.01 & wilcoxPval$wilcoxPval > 0.001, "**",
+#                                      ifelse(wilcoxPval$wilcoxPval < 0.001, "***", "NS")))
+
+datSummary <- gather(datSel, var, val, c("adult_equivalent", "land_area..ha.", "tlu", "offIncome_US", "liveAnimalProfitUS", "lvstProdProfitUS", "femaleIncomeControl_perc", "PPI_score", "cropDiv", "cropHDDSDiv", "sorghumYield", "milletYield", "maizeYield", "cropsoldKcal_perc", "cropConsKcal1Aeq", "cropIncome_US", "lvstDiv", "lvstHDDSDiv", "lvstsoldProtein_perc", "lvstConsprotein1Aeq"))
+
+
+datSummary <- group_by(datSummary, siteProv, var)
+datSummary <- summarise_if(datSummary, is.numeric, funs(median, IQR), na.rm=T)
+ 
+datSummary$M_IQR <- paste0(round(datSummary$median, 2), " (", round(datSummary$IQR, 2), ")")
+datSummary <- spread(select(datSummary, -median, -IQR), siteProv, M_IQR)
+
+datSummary$var <- factor(datSummary$var, levels = c("adult_equivalent", "land_area..ha.", "tlu", "offIncome_US", "cropIncome_US", "liveAnimalProfitUS", "lvstProdProfitUS", "femaleIncomeControl_perc", "PPI_score", "cropDiv", "cropHDDSDiv", "sorghumYield", "milletYield", "maizeYield", "cropsoldKcal_perc", "cropConsKcal1Aeq", "lvstDiv", "lvstHDDSDiv", "lvstsoldProtein_perc", "lvstConsprotein1Aeq"))
+datSummary <- datSummary[order(datSummary$var),]
+#cropHDDSDiv , lvstHDDSDiv, lvstHDDSDivBad, lvstHDDSDivGood
+#Practices: irriCash, improvedSeedBin, fertBin 
+
+datSummary <- left_join(datSummary, select(BEST, var, sigLevel))
+
+```
+
+```{r, warning=FALSE, echo=F}
+pander(datSummary)
+
+```
+
+
+```{r, echo=F, fig.height=3.5, fig.width=9.5, warning=F}
+themeTrunc <- theme_bw() + theme(strip.text.x = element_text(size = 16, family = "EB Garamond 08"), axis.text.x = element_text(hjust = 1, size=16, family = "EB Garamond 08"), axis.text.y = element_text(size=16, family = "EB Garamond 08"), axis.title.y = element_text(size = 16, family = "EB Garamond 08"), axis.title.x = element_text(size = 16, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.position='none', strip.background = element_blank()) # axis.title.x = element_blank(), 
+themeLegendTrunc <- theme_bw() + theme(strip.text.x = element_text(size = 16, family = "EB Garamond 08"), axis.text.x = element_text(hjust = 1, size=16, family = "EB Garamond 08"), axis.text.y = element_text(size=16, family = "EB Garamond 08"), axis.title.y = element_text(size = 16, family = "EB Garamond 08"), axis.title.x = element_text(size = 16, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.position="bottom")
+
+dat$siteProv <- factor(dat$siteProv, levels = c("Yatenga", "Seno"), ordered = T)
+
+dat$irriCash <- gsub(0, "No", dat$irriCash)
+dat$irriCash <- gsub(1, "Yes", dat$irriCash)
+dat$fertBin <- gsub(0, "No", dat$fertBin)
+dat$fertBin <- gsub(1, "Yes", dat$fertBin)
+dat$improvedSeedBin <- gsub(0, "No", dat$improvedSeedBin)
+dat$improvedSeedBin <- gsub(1, "Yes", dat$improvedSeedBin)
+
+#@Remove outliers
+plot_grid(
+dat %>% ggplot(aes(as.factor(irriCash), cropTotalValue_US/land_area..ha.)) + geom_boxplot(width = 0.9, outlier.shape = NA) + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + ylab(expression(paste("Crop income (USD ha"^"-1",")"))) + xlab("Irrigate cash crops (binary)") + facet_wrap(~ siteProv) + themeTrunc + stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test", label = "p.signif", hide.ns = T) #+ coord_cartesian(ylim = c(0,2000))
+,
+dat %>% ggplot(aes(as.factor(fertBin), cropTotalValue_US/land_area..ha.)) + geom_boxplot(width = 0.9, outlier.shape = NA) + facet_wrap(~siteProv) + scale_fill_grey(start = 0.5, end = .9) + ylab(expression(paste("Crop income (USD ha"^"-1",")"))) + xlab("Fertilise crops (binary)") + facet_wrap(~ siteProv) + themeTrunc + stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test", label = "p.signif", hide.ns = T) #+ coord_cartesian(ylim = c(0,2000))
+,
+dat %>% ggplot(aes(as.factor(improvedSeedBin), cropTotalValue_US/land_area..ha.)) + geom_boxplot(width = 0.9, outlier.shape = NA) + facet_wrap(~siteProv) + scale_fill_grey(start = 0.5, end = .9) + ylab(expression(paste("Crop income (USD ha"^"-1",")"))) + xlab("Utilise improved seeds (binary)") + facet_wrap(~ siteProv) + themeTrunc + stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test", label = "p.signif", hide.ns = T) #+ coord_cartesian(ylim = c(0,2000))
+, align='hv', ncol = 3, labels=c('a', 'b', 'c'), hjust = -3.5, vjust=22,  label_fontfamily = "EB Garamond 08", rel_widths = c(1,1,1))
+```
+
+```{r, echo=F, fig.height=3, fig.width=9, warning=F}
+
+#@Remove outliers
+plot_grid(
+dat %>% ggplot(aes(as.factor(irriCash), cropTotalValue_US/land_area..ha.)) + geom_boxplot(width = 0.9, outlier.shape = NA) + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + ylab(expression(paste("Crop income (USD ha"^"-1",")"))) + xlab("Irrigate cash crops (binary)") + facet_wrap(~ siteProv) + themeTrunc + stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test", label = "p.signif", hide.ns = T) + coord_cartesian(ylim = c(0,2000))
+,
+dat %>% ggplot(aes(as.factor(fertBin), cropTotalValue_US/land_area..ha.)) + geom_boxplot(width = 0.9, outlier.shape = NA) + facet_wrap(~siteProv) + scale_fill_grey(start = 0.5, end = .9) + ylab(expression(paste("Crop income (USD ha"^"-1",")"))) + xlab("Fertilise crops (binary)") + facet_wrap(~ siteProv) + themeTrunc + stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test", label = "p.signif", hide.ns = T) + coord_cartesian(ylim = c(0,2000))
+,
+dat %>% ggplot(aes(as.factor(improvedSeedBin), cropTotalValue_US/land_area..ha.)) + geom_boxplot(width = 0.9, outlier.shape = NA) + facet_wrap(~siteProv) + scale_fill_grey(start = 0.5, end = .9) + ylab(expression(paste("Crop income (USD ha"^"-1",")"))) + xlab("Utilise improved seeds (binary)") + facet_wrap(~ siteProv) + themeTrunc + stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test", label = "p.signif", hide.ns = T) + coord_cartesian(ylim = c(0,2000))
+, align='hv', ncol = 3, labels=c('a', 'b', 'c'), hjust = -3.5, vjust=22,  label_fontfamily = "EB Garamond 08", rel_widths = c(1,1,1))
+```
+
+Maize yield
+```{r, echo=F, fig.height=3, fig.width=9, warning=F}
+
+#@Remove outliers
+
+
+plot_grid(
+dat %>% ggplot(aes(as.factor(irriCash), maizeYield)) + geom_boxplot(width = 0.9, outlier.shape = NA) + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + ylab(expression(paste("Maize yield (kg ha"^"-1",")"))) + xlab("Irrigate cash crops (binary)") + facet_wrap(~ siteProv) + themeTrunc + stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test", label = "p.signif", hide.ns = T) #+ coord_cartesian(ylim = c(0,2000))
+,
+dat %>% ggplot(aes(as.factor(fertBin), maizeYield)) + geom_boxplot(width = 0.9, outlier.shape = NA) + facet_wrap(~siteProv) + scale_fill_grey(start = 0.5, end = .9) + ylab(expression(paste("Maize yield (kg ha"^"-1",")"))) + xlab("Fertilise crops (binary)") + facet_wrap(~ siteProv) + themeTrunc + stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test", label = "p.signif", hide.ns = T) #+ coord_cartesian(ylim = c(0,2000))
+,
+dat %>% ggplot(aes(as.factor(improvedSeedBin), maizeYield)) + geom_boxplot(width = 0.9, outlier.shape = NA) + facet_wrap(~siteProv) + scale_fill_grey(start = 0.5, end = .9) + ylab(expression(paste("Maize yield (kg ha"^"-1",")"))) + xlab("Utilise improved seeds (binary)") + facet_wrap(~ siteProv) + themeTrunc + stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test", label = "p.signif", hide.ns = T) #+ coord_cartesian(ylim = c(0,2000))
+, align='hv', ncol = 3, labels=c('a', 'b', 'c'), hjust = -3.5, vjust=22,  label_fontfamily = "EB Garamond 08", rel_widths = c(1,1,1))
+```
+
+```{r, echo=F, fig.height=3, fig.width=9, warning=F}
+
+#@Remove outliers
+
+
+plot_grid(
+dat %>% ggplot(aes(as.factor(irriCash), maizeYield)) + geom_boxplot(width = 0.9, outlier.shape = NA) + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + ylab(expression(paste("Maize yield (kg ha"^"-1",")"))) + xlab("Irrigate cash crops (binary)") + facet_wrap(~ siteProv) + themeTrunc + stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test", label = "p.signif", hide.ns = T) + coord_cartesian(ylim = c(0,2000))
+,
+dat %>% ggplot(aes(as.factor(fertBin), maizeYield)) + geom_boxplot(width = 0.9, outlier.shape = NA) + facet_wrap(~siteProv) + scale_fill_grey(start = 0.5, end = .9) + ylab(expression(paste("Maize yield (kg ha"^"-1",")"))) + xlab("Fertilise crops (binary)") + facet_wrap(~ siteProv) + themeTrunc + stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test", label = "p.signif", hide.ns = T) + coord_cartesian(ylim = c(0,2000))
+,
+dat %>% ggplot(aes(as.factor(improvedSeedBin), maizeYield)) + geom_boxplot(width = 0.9, outlier.shape = NA) + facet_wrap(~siteProv) + scale_fill_grey(start = 0.5, end = .9) + ylab(expression(paste("Maize yield (kg ha"^"-1",")"))) + xlab("Utilise improved seeds (binary)") + facet_wrap(~ siteProv) + themeTrunc + stat_compare_means(comparisons = list(c("No", "Yes")), method = "wilcox.test", label = "p.signif", hide.ns = T) + coord_cartesian(ylim = c(0,2000))
+, align='hv', ncol = 3, labels=c('a', 'b', 'c'), hjust = -3.5, vjust=22,  label_fontfamily = "EB Garamond 08", rel_widths = c(1,1,1))
+```
+
+```{r, echo=F, fig.height=12, fig.width=10, warning=F,  message=FALSE, comment=F}
+
+plot_grid(
+dat %>% ggplot(aes(adult_equivalent)) + geom_histogram() + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + xlab("Household members (adult eq)") + facet_wrap(~ siteProv) + themeTrunc
+,
+dat %>% ggplot(aes(land_area..ha.)) + geom_histogram() + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + xlab("Land area (ha)") + facet_wrap(~ siteProv) + themeTrunc
+,
+dat %>% ggplot(aes(tlu)) + geom_histogram() + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + xlab("Livestock holdings (TLUs)") + facet_wrap(~ siteProv) + themeTrunc
+,
+dat %>% ggplot(aes(offIncome_US)) + geom_histogram() + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + xlab(expression(paste("Off-farm income ('000 USD year"^"-1", ")"))) + facet_wrap(~ siteProv) + themeTrunc + scale_x_continuous(labels=function(x) x/1000)
+,
+dat %>% ggplot(aes(cropIncome_US)) + geom_histogram() + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + xlab(expression(paste("Crop gross income ('000 USD year"^"-1", ")"))) + facet_wrap(~ siteProv) + themeTrunc + scale_x_continuous(labels=function(x) x/1000)
+,
+dat %>% ggplot(aes(liveAnimalProfitUS)) + geom_histogram() + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + xlab(expression(paste("Live animal net income ('000 USD year"^"-1", ")"))) + facet_wrap(~ siteProv) + themeTrunc + scale_x_continuous(labels=function(x) x/1000)
+,
+dat %>% ggplot(aes(lvstProdProfitUS)) + geom_histogram() + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + xlab(expression(paste("Animal product net income ('000 USD year"^"-1", ")"))) + facet_wrap(~ siteProv) + themeTrunc + scale_x_continuous(labels=function(x) x/1000)
+,
+dat %>% ggplot(aes(femaleIncomeControl_perc)) + geom_histogram() + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + xlab(expression(paste("Relative female control (% of USD year"^"-1", ")"))) + facet_wrap(~ siteProv) + themeTrunc + scale_x_continuous(labels=function(x) x*100, breaks = c(0, 0.25, 0.5, 0.75, 1))
+,
+dat %>% ggplot(aes(cropDiv)) + geom_histogram() + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + xlab("Number of crop species") + facet_wrap(~ siteProv) + themeTrunc + scale_x_continuous(breaks = c(0, 2, 4, 6, 8, 10))
+,
+dat %>% ggplot(aes(cropHDDSDiv)) + geom_histogram() + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + xlab("Crop production diversity score") + facet_wrap(~ siteProv) + themeTrunc
+,
+dat %>% ggplot(aes(cropsoldKcal_perc)) + geom_histogram() + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + xlab("Crop market participation (% of kcal)") + facet_wrap(~ siteProv) + themeTrunc + scale_x_continuous(labels=function(x) x*100, breaks = c(0, 0.25, 0.5, 0.75, 1))
+,
+dat %>% ggplot(aes(cropConsKcal1Aeq)) + geom_histogram() + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + xlab("Crops consumed (kcal adequacy)") + facet_wrap(~ siteProv) + themeTrunc
+, align='hv', ncol = 3, labels="auto", hjust = -3.5, vjust=22,  label_fontfamily = "EB Garamond 08", rel_widths = c(1,1,1))
+```
+
+```{r, echo=F, fig.height=6, fig.width=9, warning=F,  message=FALSE, comment=F}
+plot_grid(
+dat %>% ggplot(aes(lvstDiv)) + geom_histogram() + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + xlab("Number of livestock species") + facet_wrap(~ siteProv) + themeTrunc
+,
+dat %>% ggplot(aes(lvstHDDSDiv)) + geom_histogram() + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + xlab("Livestock production diversity score") + facet_wrap(~ siteProv) + themeTrunc
+,
+dat %>% ggplot(aes(lvstsoldProtein_perc)) + geom_histogram() + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + xlab("Livestock market participation \n (% of protein)") + facet_wrap(~ siteProv) + themeTrunc + scale_x_continuous(labels=function(x) x*100, breaks = c(0, 0.25, 0.5, 0.75, 1))
+,
+dat %>% ggplot(aes(lvstConsprotein1Aeq)) + geom_histogram() + facet_wrap(~siteProv) +  scale_fill_grey(start = 0.5, end = .9) + xlab("Livestock consumed (protein adequacy)") + facet_wrap(~ siteProv) + themeTrunc
+, align='hv', ncol = 3, labels=c("m", "n", "o", "p"), hjust = -3.5, vjust=22,  label_fontfamily = "EB Garamond 08", rel_widths = c(1,1,1))
+```
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+datSel <- select(dat, siteProv, HDDS_good, HDDS_bad, HDDS_good_farm, HDDS_good_purch, HDDS_bad_farm, HDDS_bad_purch) 
+
+datSummary <- gather(datSel, var, val, c("HDDS_good", "HDDS_bad", "HDDS_good_farm", "HDDS_good_purch", "HDDS_bad_farm", "HDDS_bad_purch"))
+
+datSummary <- group_by(datSummary, siteProv, var)
+datSummary <- summarise_if(datSummary, is.numeric, funs(median, IQR), na.rm=T)
+ 
+datSummary$M_IQR <- paste0(round(datSummary$median, 2), " (", round(datSummary$IQR, 2), ")")
+datSummary <- spread(select(datSummary, -median, -IQR), siteProv, M_IQR)
+
+datSummary$var <- factor(datSummary$var, levels = c("HDDS_good", "HDDS_bad", "HDDS_good_farm", "HDDS_good_purch", "HDDS_bad_farm", "HDDS_bad_purch"))
+datHDDSSummary <- datSummary[order(datSummary$var),]
+
+```
+
+```{r, warning=FALSE, echo=F}
+pander(datHDDSSummary)
+
+```
+
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+#HFIAS regression table
+a <- summary(modHFIASgood)
+tableHFIASgood <- data.frame(variable = dimnames(a$fixed)[[1]], good = paste0(sprintf("%.2f", round(a$fixed[,1], 2)), " (", sprintf("%.2f", round(a$fixed[,3], 2)), ", ", sprintf("%.2f", round(a$fixed[,4], 2)), ")", ifelse(a$fixed[,3] > -0.001 & a$fixed[,4] > -0.001, " *", ifelse(a$fixed[,3] < 0.001 & a$fixed[,4] < 0.001, " *", ""))))
+#HFgSe <- separate(HFgSe, variable, into = c("status", "variable"), sep = "_")
+#HFgSeWide <- spread(HFgSe, status, "Seno")
+
+
+#tableHFIASgood <- full_join(data.frame(variable = c("Intercept", "offIncBinTRUE", "cropIncome", "lvstProfitUS500" , "femaleIncomeControl10Pc", "cropConsKcal1Aeq", "lvstConsprotein1Aeq", "cropDiv", "lvstDiv", "aidBin1")), tableHFIASgood) #reorder ... the lazy way
+#tableHFIASgood <- tableHFIASgood[, c(1,4,3,2,7,6,5)]
+
+a <- summary(modHFIASbad)
+tableHFIASbad  <- data.frame(variable = dimnames(a$fixed)[[1]], lean = paste0(sprintf("%.2f", round(a$fixed[,1], 2)), " (", sprintf("%.2f", round(a$fixed[,3], 2)), ", ", sprintf("%.2f", round(a$fixed[,4], 2)), ")", ifelse(a$fixed[,3] > -0.001 & a$fixed[,4] > -0.001, " *", ifelse(a$fixed[,3] < 0.001 & a$fixed[,4] < 0.001, " *", ""))))
+#HFbSe$variable <- gsub("_US500", "", HFbSe$variable)
+
+
+#tableHFIASbad <- full_join(HFbSe, HFbYaWide)
+#tableHFIASbad <- full_join(data.frame(variable = c("Intercept", "offIncBinTRUE", "cropIncome", "lvstProfitUS500" , "femaleIncomeControl10Pc", "cropConsKcal1Aeq", "lvstConsprotein1Aeq", "cropDiv", "lvstDiv", "aidBin1")), tableHFIASbad)
+#tableHFIASbad <- tableHFIASbad[, c(1,2,5,4,3)]
+
+```
+
+HFIAS bad season
+```{r, warning=FALSE, echo=F}
+pander(tableHFIASbad)
+
+```
+
+```{r, echo=F, fig.height=3, fig.width=9, warning=F}
+dat$lvstPofitUS <- dat$lvstProfitUS500*500
+plot_grid(
+dat %>% ggplot(aes(as.factor(irriCash), cropTotalValue_US/land_area..ha.)) + geom_boxplot(width = 0.9, outlier.shape = NA) + facet_wrap(~siteProv) + coord_cartesian(ylim = c(0,2000)) + scale_fill_grey(start = 0.5, end = .9) + ylab(expression(paste("Crop income (USD ha"^"-1",")"))) + xlab("Irrigate cash crops (binary)") + facet_wrap(~ siteProv) + themeTrunc
+
+, align='hv', ncol = 3, labels=c('a', 'b', 'c'), hjust = -3.5, vjust=22,  label_fontfamily = "EB Garamond 08", rel_widths = c(1,1,1))
+```
+
+HFIAS good season
+```{r, warning=FALSE, echo=F}
+pander(tableHFIASgood)
+
+```
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+#HDDS aggregate sources regression tables
+a <- summary(modHDDSBad)
+tableHDDSbad <- data.frame(variable = paste(dimnames(a$fixed)[[1]]), lean = paste0(sprintf("%.2f", round(a$fixed[,1], 2)), " (", sprintf("%.2f", round(a$fixed[,3], 2)), ", ", sprintf("%.2f", round(a$fixed[,4], 2)), ")", ifelse(a$fixed[,3] > -0.001 & a$fixed[,4] > -0.001, " *", ifelse(a$fixed[,3] < 0.001 & a$fixed[,4] < 0.001, " *", ""))))
+
+a <- summary(modHDDSGood)
+tableHDDSgood <- data.frame(variable = paste(dimnames(a$fixed)[[1]]), good = paste0(sprintf("%.2f", round(a$fixed[,1], 2)), " (", sprintf("%.2f", round(a$fixed[,3], 2)), ", ", sprintf("%.2f", round(a$fixed[,4], 2)), ")", ifelse(a$fixed[,3] > -0.001 & a$fixed[,4] > -0.001, " *", ifelse(a$fixed[,3] < 0.001 & a$fixed[,4] < 0.001, " *", ""))))
+
+
+```
+
+HDDS good season
+```{r, warning=FALSE, echo=F}
+pander(tableHDDSgood)
+
+```
+
+HDDS bad season
+```{r, warning=FALSE, echo=F}
+pander(tableHDDSbad)
+
+```
+
+HDDS marginal effects plots
+```{r, echo=F, fig.height=4, fig.width=4.5, warning=F}
+b <- marginal_effects(modHDDSBad, effects = ("farmIncomeDetailedCalcUS1000:offIncBin"), conditions = data.frame(siteProv = c("Seno", "Yatenga")))$`farmIncomeDetailedCalcUS1000:offIncBin`
+
+# a <- marginal_effects(modHDDSBad, effects = c("logFarmIncomeDetailedCalc:offIncBin"), conditions = data.frame(siteProv = c("Seno", "Yatenga")))$`logFarmIncomeDetailedCalc:offIncBin`
+# conditions <- make_conditions(modHDDSBad, vars =c("siteProv","totalProdDiv"))
+# b <- marginal_effects(modHDDSBad, effects = c("logFarmIncomeDetailedCalc:offIncBin"), conditions = data.frame(totalProdDiv = c(1,2,3), cond__ = c("1 category", "2 categories", "3 categories")))$`logFarmIncomeDetailedCalc:offIncBin`
+#b <- marginal_effects(modHDDSBad, effects = c("logFarmIncomeDetailedCalc:totalProdDiv"), conditions = data.frame(siteProv = c("Seno", "Yatenga")))$`logFarmIncomeDetailedCalc:totalProdDiv`
+
+#b$totalProdDiv <- as.factor(round(as.numeric(levels(b$totalProdDiv))[b$totalProdDiv], 0))
+
+#ggplot(b, aes(farmIncomeDetailedCalcUS1000, estimate__, colour = offIncBin, fill = offIncBin), alpha = offIncBin) + geom_line() + geom_ribbon(aes(ymin = lower__, ymax = upper__), alpha = 0.5, colour = NA) + facet_wrap(~siteProv) + xlab("Gross farm income ('000 USD)") + coord_cartesian(ylim = c(1, 9)) + ylab("Diet Diversity Score in lean season") + scale_x_continuous(limits = c(0,5)) + scale_y_continuous(breaks = c(1:9)) + themeLegendTrunc + guides(colour=guide_legend(title="Off-farm income"), fill = FALSE) + scale_color_manual(values = c("grey74", "black")) + scale_fill_grey(start = 0.1, end = .4) 
+b$offIncBin <- gsub(TRUE, "Yes", b$offIncBin)
+b$offIncBin <- gsub(FALSE, "No", b$offIncBin)
+ggplot(b, aes(farmIncomeDetailedCalcUS1000, estimate__, colour = offIncBin), alpha = offIncBin) + geom_line() + geom_line(aes(y = lower__), linetype = "dashed") + geom_line(aes(y = upper__), linetype = "dashed") + facet_wrap(~siteProv) + xlab(bquote("Gross farm income ('000 USD year"^"-1"*")")) + coord_cartesian(ylim = c(1, 9)) + ylab("Diet Diversity Score in lean period") + scale_x_continuous(limits = c(0,5)) + scale_y_continuous(breaks = c(1:9)) +  guides(colour=guide_legend(title="Off-farm income earned"), fill = FALSE) + scale_color_manual(values = c("grey55", "black")) + themeLegendTrunc
+
+```
+
+```{r, echo=F, fig.height=5, fig.width=4.5, warning=F}
+b$offIncBin <- gsub("No", "Off-farm income: No", b$offIncBin)
+b$offIncBin <- gsub("Yes", "Off-farm income: Yes", b$offIncBin)
+ggplot(b, aes(farmIncomeDetailedCalcUS1000, estimate__)) + geom_line() + geom_ribbon(aes(ymin = lower__, ymax = upper__), alpha = 0.1, colour = NA) + facet_wrap(~siteProv+offIncBin) + xlab(bquote("Gross farm income ('000 USD year"^"-1"*")")) + coord_cartesian(ylim = c(1, 9)) + ylab("Diet Diversity Score in lean period") + scale_x_continuous(limits = c(0,5)) + scale_y_continuous(breaks = c(1:9)) + themeLegendTrunc
+
+```
+
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+#HDDS by source regression tables
+a <- summary(modHDDSfarmBad)
+tableHDDSfarmbad  <- data.frame(variable = paste(dimnames(a$fixed)[[1]]), lean = paste0(sprintf("%.2f", round(a$fixed[,1], 2)), " (", sprintf("%.2f", round(a$fixed[,3], 2)), ", ", sprintf("%.2f", round(a$fixed[,4], 2)), ")", ifelse(a$fixed[,3] > -0.001 & a$fixed[,4] > -0.001, " *", ifelse(a$fixed[,3] < 0.001 & a$fixed[,4] < 0.001, " *", ""))))
+
+
+a <- summary(modHDDSfarmGood)
+tableHDDSfarmgood <- data.frame(variable = paste(dimnames(a$fixed)[[1]]), good = paste0(sprintf("%.2f", round(a$fixed[,1], 2)), " (", sprintf("%.2f", round(a$fixed[,3], 2)), ", ", sprintf("%.2f", round(a$fixed[,4], 2)), ")", ifelse(a$fixed[,3] > -0.001 & a$fixed[,4] > -0.001, " *", ifelse(a$fixed[,3] < 0.001 & a$fixed[,4] < 0.001, " *", ""))))
+
+
+a <- summary(modHDDSpurchBad)
+tableHDDSpurchbad <- data.frame(variable = paste(dimnames(a$fixed)[[1]]), lean = paste0(sprintf("%.2f", round(a$fixed[,1], 2)), " (", sprintf("%.2f", round(a$fixed[,3], 2)), ", ", sprintf("%.2f", round(a$fixed[,4], 2)), ")", ifelse(a$fixed[,3] > -0.001 & a$fixed[,4] > -0.001, " *", ifelse(a$fixed[,3] < 0.001 & a$fixed[,4] < 0.001, " *", ""))))
+
+a <- summary(modHDDSpurchGood)
+tableHDDSpurchgood <- data.frame(variable = paste(dimnames(a$fixed)[[1]]), good = paste0(sprintf("%.2f", round(a$fixed[,1], 2)), " (", sprintf("%.2f", round(a$fixed[,3], 2)), ", ", sprintf("%.2f", round(a$fixed[,4], 2)), ")", ifelse(a$fixed[,3] > -0.001 & a$fixed[,4] > -0.001, " *", ifelse(a$fixed[,3] < 0.001 & a$fixed[,4] < 0.001, " *", ""))))
+
+```
+
+HDDS farm bad season
+```{r, warning=FALSE, echo=F}
+pander(tableHDDSfarmbad)
+
+```
+
+HDDS farm good season
+```{r, warning=FALSE, echo=F}
+pander(tableHDDSfarmgood)
+
+```
+
+HDDS purchase bad season
+```{r, warning=FALSE, echo=F}
+pander(tableHDDSpurchbad)
+
+```
+
+HDDS purchase good season
+```{r, warning=FALSE, echo=F}
+pander(tableHDDSpurchgood)
+
+```
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+dat$totalIncomeTertile <-ifelse(dat$siteProv == "Seno", as.character(cut(dat$totalIncome_US, quantile(dat$totalIncome_US[dat$siteProv == "Seno"], c(0, 1/3, 2/3, 1)),c('Low','Medium','High'), include.lowest = T)), as.character(cut(dat$totalIncome_US, quantile(dat$totalIncome_US[dat$siteProv == "Yatenga"], c(0, 1/3, 2/3, 1)),c('Low','Medium','High'), include.lowest = T)))
+#cut(dat$totalIncome_US, quantile(dat$totalIncome_US, c(0, 1/3, 2/3, 1)),c('Low','Medium','High'))
+
+#themeTrunc <- theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=12, family = "EB Garamond 08"), axis.text.y = element_text(size=12, family = "EB Garamond 08"), axis.title.y = element_text(family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.position='none', axis.title.x = element_blank())
+```
+
+```{r, echo=F, fig.height=3, fig.width=9, warning=F}
+#plot_grid(
+ggplot(dat, aes(totalIncomeTertile, cropHDDSDiv)) + geom_boxplot(width = 0.9) + scale_fill_grey(start = 0.5, end = .9) + theme_bw() + ylab("Crop diversity (12 food categories)") + xlab("Gross income (tertile)") + facet_wrap(~ siteProv)
+
+ggplot(dat, aes(totalIncomeTertile, cropsoldKcal_perc*100)) + geom_boxplot(width = 0.9) + scale_fill_grey(start = 0.5, end = .9) + theme_bw() + ylab("Crop market participation (% of kcal sold)") + xlab("Gross income (tertile)") + facet_wrap(~ siteProv)
+
+ggplot(dat, aes(totalIncomeTertile, lvstsoldProtein_perc*100)) + geom_boxplot(width = 0.9) + scale_fill_grey(start = 0.5, end = .9) + theme_bw() + ylab("Livestock market participation (% of protein sold)") + xlab("Gross income (tertile)") + facet_wrap(~ siteProv)
+
+ggplot(dat, aes(totalIncomeTertile, lvstsoldProtein_perc*100)) + geom_boxplot(width = 0.9) + scale_fill_grey(start = 0.5, end = .9) + theme_bw() + ylab("Livestock market participation (% of protein sold)") + xlab("Gross income (tertile)") + facet_wrap(~ siteProv)
+
+```
+
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+dat$totalIncomeTertile <-ifelse(dat$siteProv == "Seno" & dat$netFarmIncome >0, as.character(cut(dat$netFarmIncome, quantile(dat$netFarmIncome[dat$siteProv == "Seno"& dat$netFarmIncome >0.1], c(0, 1/3, 2/3, 1)),c('Low','Medium','High'), include.lowest = T)), as.character(cut(dat$netFarmIncome, quantile(dat$netFarmIncome[dat$siteProv == "Yatenga" & dat$netFarmIncome >0.1], c(0, 1/3, 2/3, 1)),c('Low','Medium','High'), include.lowest = T)))
+#cut(dat$totalIncome_US, quantile(dat$totalIncome_US, c(0, 1/3, 2/3, 1)),c('Low','Medium','High'))
+
+```
+
+```{r, echo=F, fig.height=3, fig.width=9.5, warning=F}
+#plot_grid(
+ggplot(dat, aes(totalIncomeTertile, cropHDDSDiv)) + geom_boxplot(width = 0.9) + scale_fill_grey(start = 0.5, end = .9) + theme_bw() + ylab("Crop diversity (12 food categories)") + xlab("Gross income (tertile)") + facet_wrap(~ siteProv)
+
+ggplot(dat, aes(totalIncomeTertile, cropsoldKcal_perc*100)) + geom_boxplot(width = 0.9) + scale_fill_grey(start = 0.5, end = .9) + theme_bw() + ylab("Crop market participation (% of kcal sold)") + xlab("Gross income (tertile)") + facet_wrap(~ siteProv)
+
+ggplot(dat, aes(totalIncomeTertile, lvstsoldProtein_perc*100)) + geom_boxplot(width = 0.9) + scale_fill_grey(start = 0.5, end = .9) + theme_bw() + ylab("Livestock market participation (% of protein sold)") + xlab("Gross income (tertile)") + facet_wrap(~ siteProv)
+
+ggplot(dat, aes(totalIncomeTertile, lvstsoldProtein_perc*100)) + geom_boxplot(width = 0.9) + scale_fill_grey(start = 0.5, end = .9) + theme_bw() + ylab("Livestock market participation (% of protein sold)") + xlab("Gross income (tertile)") + facet_wrap(~ siteProv)
+
+```

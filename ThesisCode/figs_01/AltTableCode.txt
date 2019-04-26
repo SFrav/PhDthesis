@@ -1,0 +1,125 @@
+\begin{sidewaystable}
+%\begin{landscape}
+ %\small
+  %\begin{longtable}{lcccccccccccccccc}
+  \captionsetup{singlelinecheck = false, justification=justified} %left justify caption
+  \caption{Summary of selected sites, sampled households and agro-ecological zones (AEZ)}
+  \label{tab:01_1}
+  %\small
+  \fontsize{7}{12}\selectfont%Very small font to fit table
+\begin{tabularx}{\textwidth}
+  {
+p{\dimexpr 0.02\linewidth-2\tabcolsep}
+p{\dimexpr 0.1\linewidth-2\tabcolsep}
+p{\dimexpr 0.07\linewidth-2\tabcolsep}
+p{\dimexpr 0.09\linewidth-2\tabcolsep}
+p{\dimexpr 0.04\linewidth-2\tabcolsep}
+p{\dimexpr 0.07\linewidth-2\tabcolsep}
+p{\dimexpr 0.05\linewidth-2\tabcolsep}
+p{\dimexpr 0.07\linewidth-2\tabcolsep}
+p{\dimexpr 0.06\linewidth-2\tabcolsep}
+p{\dimexpr 0.06\linewidth-2\tabcolsep}
+p{\dimexpr 0.11\linewidth-2\tabcolsep}
+p{\dimexpr 0.09\linewidth-2\tabcolsep}
+p{\dimexpr 0.03\linewidth-2\tabcolsep}
+p{\dimexpr 0.03\linewidth-2\tabcolsep}
+p{\dimexpr 0.03\linewidth-2\tabcolsep}
+p{\dimexpr 0.03\linewidth-2\tabcolsep}
+p{\dimexpr 0.03\linewidth-2\tabcolsep}}
+%\endfirsthead
+\toprule
+ID & AEZ description & Country & Site & Obs. & \multicolumn{5}{l}{Livelihood activities${\dag}$} & Market orientation${\dag}$ & Market access${\dag}$ & \multicolumn{5}{l}{Thesis Chapter} \\
+\midrule
+ & & & & & Livestock & Dairy & Cash crops & Staple crops & Off-farm & & & 2 & 3 & 4 & 5 & 6 \\
+\midrule
+%\endhead
+1 & Warm / semi-arid & Kenya & Makueni & 316 & & & X & & Low & Low & & & & & X \\
+2 & Warm / semi-arid & Kenya & Kitui & 385 & & & & & & & & & & & X \\
+3 & Warm / semi-arid & Mali & South-east & 363 & & X & X & & Unknown & Low & & & & & X \\
+4 & Warm / semi-arid & Tanzania & Various & 999 & X & X & X & X & Various & Various & & & & & X \\
+5 & Warm / semi-arid & Zambia & West & 624 & X & X & X & X & & & & & & & X \\
+6 & Warm / semi- arid & Kenya & Wote & 473 & X & X & X & & High & High & & X & & & \\
+7 & Warm / semi- arid & Burkina Faso & Seno & 200 & & & X & & Low & Low & & & & X & \\
+8 & Warm / semi- arid & Burkina Faso & Yatenga & 200 & & X & X & X & Moderate & Moderate & & & & X & \\
+9 & Warm / semi- arid & Burkina Faso & National & 1070 & & X & X & X & Various & Various & & & & & X \\
+10 & Warm / sub-humid & D.R. Congo & Central & 413 & & & X & X & Low & Low & & & & & X \\
+12 & Warm / sub-humid & Tanzania & South-east & 522 & X & X & X & & Various & Various & & & & & X \\
+13 & Warm / humid & Kenya & Nyando & 160 & & X & X & X & Low & Moderate & & X & & & X \\
+14 & Cool / semi-arid & Ethiopia & Tigray & 250 & & & X & & Low & Low & & & & & X \\
+15 & Cool / sub-humid & Ethiopia & Central highlands & 707 & X & X & X & X & Unknown & High & & & & & X \\
+16 & Cool / sub-humid & Tanzania & Lushoto & 149 & X & X & X & X & Moderate & Moderate & X & X & X & & \\
+17 & Cool / sub-humid & Tanzania & Mbeya & 560 & X & X & X & X & Low - moderate & Low - moderate & & & & & X \\
+18 & Cool / humid & Malawi & Makaika & 157 & & X & X & & High & Moderate & & & & & X \\
+19 & Cool / humid & Uganda & Rakai & 130 & & X & X & & Moderate & Moderate & & & & & X \\
+20 & Cool / humid & Kenya & Western & 169 & X & X & X & X & Moderate - high & Moderate & & & & & X \\
+21 & Various & Tanzania & & 841 & & & & & Diverse & Diverse & & & & & X \\
+22 & Various & D.R. Congo & Eastern & 438 & X & & X & X & Moderate & Low - moderate & & & & & X \\
+\bottomrule
+\end{tabularx}
+%\end{longtable}
+\small
+\raggedright Sources: *IFPRI, 2010 USAID, FEWS NET
+\end{sidewaystable}
+%\end{landscape}
+
+
+
+
+
+\begin{sidewaystable}
+%\begin{landscape}
+ %\small
+  %\begin{longtable}{lcccccccccccccccc}
+  \captionsetup{singlelinecheck = false, justification=justified} %left justify caption
+  \caption{Summary of selected sites, sampled households and agro-ecological zones (AEZ)}
+  \label{tab:01_1}
+  %\small
+  %\fontsize{7}{12}\selectfont%Very small font to fit table
+  \begin{tabularx}{\textwidth}{
+  p{\dimexpr 0.03\linewidth-2\tabcolsep}
+  p{\dimexpr 0.12\linewidth-2\tabcolsep}
+  p{\dimexpr 0.08\linewidth-2\tabcolsep}
+  p{\dimexpr 0.1\linewidth-2\tabcolsep}
+  p{\dimexpr 0.05\linewidth-2\tabcolsep}
+  p{\dimexpr 0.06\linewidth-2\tabcolsep}
+  p{\dimexpr 0.01\linewidth-2\tabcolsep}
+  p{\dimexpr 0.08\linewidth-2\tabcolsep}
+  p{\dimexpr 0.06\linewidth-2\tabcolsep}
+  p{\dimexpr 0.01\linewidth-2\tabcolsep}
+  p{\dimexpr 0.1\linewidth-2\tabcolsep}
+  p{\dimexpr 0.01\linewidth-2\tabcolsep}
+  p{\dimexpr 0.11\linewidth-2\tabcolsep}
+  p{\dimexpr 0.04\linewidth-2\tabcolsep}
+  p{\dimexpr 0.04\linewidth-2\tabcolsep}
+  p{\dimexpr 0.04\linewidth-2\tabcolsep}
+  p{\dimexpr 0.04\linewidth-2\tabcolsep}
+  p{\dimexpr 0.05\linewidth-2\tabcolsep}}
+  \toprule
+  ID & AEZ description* & Country & Site & Obs. & \multicolumn{2}{l}{} & Livelihood activities${\dag}$ & \multicolumn{2}{l}{} & Market orientation${\dag}$ & \multicolumn{2}{l}{Market Access${\dag}$} & \multicolumn{5}{l}{Thesis Chapter} \\
+   & & & & & Dairy & \multicolumn{2}{l}{Cash crops} & Off-farm & \multicolumn{3}{l}{} & & 2 & 3 & 4 & 5 & 6 \\
+  1 & Warm / semi-arid & Kenya & Makueni \& Kitui & 701 & & \multicolumn{2}{l}{X} & X & \multicolumn{3}{l}{Low} & Low & & & & & X \\
+  2 & Warm / semi-arid & Mali & South-east & 363 & & \multicolumn{2}{l}{X} & & \multicolumn{3}{l}{Unknown} & Low & & & & & X \\
+  3 & Warm / semi-arid & Tanzania & Various & 999 & X & \multicolumn{2}{l}{X} & X & \multicolumn{3}{l}{Various} & Various & & & & & X \\
+  4 & Warm / semi-arid & Zambia & West & 624 & X & \multicolumn{2}{l}{X} & X & \multicolumn{3}{l}{} & & & & & & X \\
+  5 & Warm / semi- arid & Kenya & Wote & 473 & X & \multicolumn{2}{l}{X} & X & \multicolumn{3}{l}{High} & High & & X & & & \\
+  6 & Warm / semi- arid & Burkina Faso & Seno & 200 & & \multicolumn{2}{l}{} & & \multicolumn{3}{l}{Low} & Low & & & & X & \\
+  7 & Warm / semi- arid & Burkina Faso & Yatenga & 200 & & \multicolumn{2}{l}{X} & X & \multicolumn{3}{l}{Moderate} & Moderate & & & & X & \\
+  8 & Warm / semi- arid & Burkina Faso & National & 763 & & \multicolumn{2}{l}{X} & X & \multicolumn{3}{l}{Various} & Various & & & & & X \\
+  9 & Warm / sub-humid & Burkina Faso & National & 307 & & \multicolumn{2}{l}{x} & x & \multicolumn{3}{l}{Various} & Various & & & & & X \\
+  10 & Warm / sub-humid & D.R. Congo & Central & 413 & & \multicolumn{2}{l}{} & X & \multicolumn{3}{l}{Low} & Low & & & & & X \\
+  11 & Warm / sub-humid & Tanzania & South-east & 522 & X & \multicolumn{2}{l}{X} & & \multicolumn{3}{l}{Various} & Various & & & & & X \\
+  12 & Warm / humid & Kenya & Nyando & 160 & & \multicolumn{2}{l}{X} & X & \multicolumn{3}{l}{Low} & Moderate & & X & & & X \\
+  13 & Cool / semi-arid & Ethiopia & Tigray & 250 & & \multicolumn{2}{l}{} & & \multicolumn{3}{l}{Low} & Low & & & & & X \\
+  14 & Cool / sub-humid & Ethiopia & Central highlands & 707 & X & \multicolumn{2}{l}{X} & X & \multicolumn{3}{l}{Unknown} & High & & & & & X \\
+  15 & Cool / sub-humid & Tanzania & Lushoto & 149 & X & \multicolumn{2}{l}{X} & X & \multicolumn{3}{l}{Moderate} & Moderate & X & X & X & & \\
+  16 & Cool / sub-humid & Tanzania & Mbeya & 560 & X & \multicolumn{2}{l}{X} & X & \multicolumn{3}{l}{Low - moderate} & Low - moderate & & & & & X \\
+  17 & Cool / humid & Malawi & Makaika & 157 & & \multicolumn{2}{l}{X} & & \multicolumn{3}{l}{High} & Moderate & & & & & X \\
+  18 & Cool / humid & Uganda & Rakai & 130 & & \multicolumn{2}{l}{X} & & \multicolumn{3}{l}{Moderate} & Moderate & & & & & X \\
+  19 & Cool / humid & Kenya & Western & 169 & X & \multicolumn{2}{l}{X} & X & \multicolumn{3}{l}{Moderate - high} & Moderate & & & & & X \\
+  20 & Various & Tanzania & & 841 & & \multicolumn{2}{l}{X} & X & \multicolumn{3}{l}{Diverse} & Diverse & & & & & X \\
+  21 & Various & D.R. Congo & Eastern & 438 & X & \multicolumn{2}{l}{} & X & \multicolumn{3}{l}{Moderate} & Low - moderate & & & & & X \\
+  \end{tabularx}
+%\end{longtable}
+\small
+\raggedright Sources: *IFPRI, 2010 USAID, FEWS NET
+\end{sidewaystable}

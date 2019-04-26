@@ -1,0 +1,1577 @@
+---
+title: "Nutrition in sub-Saharan rural households: sourcing and farm self-sufficiency"
+output: word_document
+---
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(pander)
+library(cowplot)
+library(broom) # used to gather model outputs together
+library(ggeffects) # used to plot marginal effects
+library(extrafont)
+panderOptions("table.split.table", Inf)
+font_import(pattern="Garamond")
+#loadfonts(device="win")
+options(scipen = 999)
+
+
+reliabSensitivity <- T #Set to T to test sensitivity to removing enumerator evaluated unreliable obs
+
+themeTrunc <- theme_bw() + theme(text = element_text(size=14, family = "EB Garamond 08"),  strip.text.x = element_text(size=16, family = "EB Garamond 08"), axis.text.x = element_text(angle = 45, hjust = 1, size=16, family = "EB Garamond 08"), axis.text.y = element_text(size=16, family = "EB Garamond 08"), axis.title.y = element_text(size = 16, family = "EB Garamond 08"), axis.title.x = element_text(size = 16, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.position='none', strip.background = element_blank()) 
+
+themeLegendTrunc <- theme_bw() + theme(strip.text.x = element_text(size=16, family = "EB Garamond 08"), axis.text.x = element_text(hjust = 1, size=16, family = "EB Garamond 08"), axis.text.y = element_text(size=16, family = "EB Garamond 08"), axis.title.y = element_text(size = 16, family = "EB Garamond 08"), axis.title.x = element_text(size = 16, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.position="bottom") # axis.title.x = element_blank(), 
+
+#source('prepareIndicatorsMain.R')
+dat <- read.csv('Outputs/DFs/datSpatial.csv')
+allnutrientNplot <- read.csv('Outputs/DFs/allnutrientsNplot.csv')
+datProdConsNutrition <- read.csv('Outputs/DFs/datProdConsNutrition.csv')
+HDDSstackDaily_long <- read.csv('Outputs/DFs/HDDSstackDaily_long.csv')
+
+
+
+#Adult equivalents following Claro et al. 2010 http://www.scielo.br/scielo.php?script=sci_arttext&pid=S0102-311X2010001100020
+dat$adultEq <- NULL
+DRVlookup <- read.csv('DataParams/nutrientIntakeRequirementsFAO.csv')
+DRVlookup$adultEq <- DRVlookup$requirement / mean(DRVlookup$requirement[DRVlookup$class %in% c("females25to50", "males25to50") & DRVlookup$nutrient == "ENERGY_KC"])
+adultEqlookup <- select(subset(DRVlookup, nutrient == "ENERGY_KC"), class, adultEq)
+
+adultEqLong <- gather(select(dat, HouseholdID, children_under_4:femalesover50), class, val, - HouseholdID)
+adultEqLong <- left_join(adultEqLong, adultEqlookup)
+adultEqLong$adultEqInter <- adultEqLong$val * adultEqLong$adultEq
+adultEqLong <- group_by(adultEqLong, HouseholdID)
+datAdultEq <- summarise(adultEqLong, adultEq = sum(adultEqInter, na.rm=T)) 
+dat <- left_join(dat, datAdultEq)
+
+
+HDDSstackDaily_long$farmSourceDependentGood <- ifelse(HDDSstackDaily_long$HDDSpurchasedGood ==0 & HDDSstackDaily_long$HDDSpurchasedBad == 0, 1, 0) 
+
+dat$eastWest <- ifelse(dat$country %in% c("burkina faso", "ghana", "mali"), "westAfrica",
+                       ifelse(dat$country %in% c("drc"), "centralAfrica", "eastAfrica"))
+
+dat$projectname <- sub("_[^_]+$", "", dat$projectname) #Remove the country name of some projects
+
+dat$farmIncomePPP <- dat$farmIncome_lc / dat$PPP
+dat$livedstockIncome_percFarm <- dat$livestockIncomePPP / dat$farmIncomePPP
+dat$cropResFed <- grepl(pattern = "feed", x = dat$crop_residue_use_1)
+dat$cropResFed[is.na(dat$cropResFed)] <- FALSE
+#prop.table(table(dat$livedstockIncome_percFarm < 0.9 & dat$livedstockIncome_percFarm > 0.1 & dat$cropResFed == T, dat$farmType), 2)
+
+##Remove households with potential errors
+if(reliabSensitivity ==T){
+  outlierObs <- unique(c(as.character(dat$HouseholdID[dat$landcultivated > 100]),
+  as.character(dat$HouseholdID[dat$tlu > 250]),
+  as.character(dat$HouseholdID[dat$adultEq > 30 | dat$adultEq == 0]),
+  as.character(dat$HouseholdID[dat$HDDSgood == 0]),
+  as.character(dat$HouseholdID[dat$HDDSbad == 0]),
+  as.character(dat$HouseholdID[dat$adultEq == 0]),
+  as.character(dat$HouseholdID[dat$projectname == "TreeAID" & dat$country == "ghana"]),
+  as.character(dat$HouseholdID[dat$quality_rapport == "very_difficult" | dat$quality_reliability %in% c(1, 2)]),
+  as.character(dat$HouseholdID[is.na(dat$farmType)]),
+  as.character(dat$HouseholdID[dat$incomePPP > 100000]))) #enumerator evaluated unreliable obs removed if reliabSensitivity ==T
+} else{
+outlierObs <- unique(c(as.character(dat$HouseholdID[dat$landcultivated > 100]),
+as.character(dat$HouseholdID[dat$tlu > 250]),
+as.character(dat$HouseholdID[dat$adultEq > 30 | dat$adultEq == 0]),
+as.character(dat$HouseholdID[dat$quality_reliability %in% c(1)]),
+as.character(dat$HouseholdID[dat$HDDSgood == 0]),
+as.character(dat$HouseholdID[dat$HDDSbad == 0]),
+as.character(dat$HouseholdID[dat$adultEq == 0]),
+as.character(dat$HouseholdID[dat$projectname == "TreeAID" & dat$country == "ghana"]),
+as.character(dat$HouseholdID[is.na(dat$farmType)],
+as.character(dat$HouseholdID[dat$incomePPP > 100000]))))
+}
+
+dat <- dat[!(dat$HouseholdID %in% outlierObs),]
+datProdConsNutrition <- datProdConsNutrition[!(as.character(datProdConsNutrition$HouseholdID) %in% outlierObs),]
+#HDDSstack_long <- HDDSstack_long[!(HDDSstack_long$HouseholdID %in% outlierObs),]
+#HDDSstackDaily_long <- HDDSstackDaily_long[!(HDDSstackDaily_long$HouseholdID %in% outlierObs),]
+HDDSstackDaily_long <- HDDSstackDaily_long[(HDDSstackDaily_long$HouseholdID %in% dat$HouseholdID),]
+
+
+##Test sensitivity to farm type classification of 1.5 TLU - Not a great deal different using livestock income. Also, what about those that are not market orientated
+# dat$cropDiversity[is.na(dat$cropDiversity)] <- 0
+# dat$homegarden[is.na(dat$homegarden)] <- "n"
+# dat$farmType <- ifelse(dat$cropDiversity > 2 | dat$homegarden == "y", "Diverse cropping", "Specialised cropping")
+# 
+# dat$farmType <- ifelse(dat$livestockProdPPP > 0 , paste(dat$farmType, "& livestock"), dat$farmType)
+# #dat$farmType <- ifelse(dat$farmType == "NA & livestock" & dat$tlu > 0, "Specialised cropping & livestock", dat$farmType)
+# datProdConsNutrition$farmType <- NULL
+# datProdConsNutrition <- left_join(datProdConsNutrition, select(dat, HouseholdID, farmType))
+
+
+dat$farmTypeScale <- ifelse(dat$landcultivated > 2, paste(as.character(dat$farmType), "medium-large"), paste(as.character(dat$farmType), "small"))
+
+dat$extract.AEZ..datXY. <- gsub("8", "8. Warm semi-arid", dat$extract.AEZ..datXY.)
+dat$extract.AEZ..datXY. <- gsub("9", "9. Warm sub-humid", dat$extract.AEZ..datXY.)
+#dat$extract.AEZ..datXY. <- gsub("10", "10. Warm humid", dat$extract.AEZ..datXY.)
+dat$extract.AEZ..datXY. <- gsub("12", "12. Cool semi-arid", dat$extract.AEZ..datXY.)
+dat$extract.AEZ..datXY. <- gsub("13", "13. Cool sub-humid", dat$extract.AEZ..datXY.)
+dat$extract.AEZ..datXY. <- gsub("14", "14. Cool humid", dat$extract.AEZ..datXY.)
+
+datProdConsNutrition <- left_join(datProdConsNutrition, select(dat, HouseholdID, AEZ = extract.AEZ..datXY., farmTypeScale))
+datProdConsNutrition$AEZ[datProdConsNutrition$AEZ == "10"] <- "14. Cool humid"
+datProdConsNutrition$AEZ <- ifelse(datProdConsNutrition$AEZ %in% c("13. Cool sub-humid", "9. Warm sub-humid", "14. Cool humid"), "Humid or sub-humid", "Semi-arid")
+
+dat$hhid <- gsub('[^0-9.]', '', dat$HouseholdID)
+
+#Population data were extracted from the gridded population dataset http://sedac.ciesin.columbia.edu/data/set/gpw-v4-population-density-adjusted-to-2015-unwpp-country-totals-rev10
+#Urban areas were masked out using the raster calulator (layer <1000) * layer / (layer <1000)
+#Zonal statistics were calculated for each administrative unit (2, 3 or 4)
+#mean population per square km extracted for each point using SAGA 'polygon attributes to points'
+datPop <- read.csv('SpatialLayers/datPopRural.csv')
+dat <- left_join(dat, select(datPop, HouseholdID, popMean))
+
+#!Lazy hack. Works
+manualPop <- group_by(dat, projectname, country, region)
+manualPop <- summarise(manualPop, popMeanManual = mean(popMean, na.rm=T))
+manualPop$popMeanManual[manualPop$country == "malawi"] <- 120 # No GPS points based on zonal statistics of the sampled admin units
+#dat$popMean <- NULL
+
+dat <- left_join(dat, manualPop)
+dat$popMean <- ifelse(is.na(dat$popMean), dat$popMeanManual, dat$popMean)
+
+dat$popMean <- ifelse(dat$projectname == "I4IGalvmed", dat$popMean/2, dat$popMean)
+
+dat$weight <- dat$popMean / sum(dat$popMean, na.rm=T)*6343
+
+datProdConsNutrition <- left_join(datProdConsNutrition, select(dat, HouseholdID, weight))
+
+#HDDSstackDaily_long <- left_join(HDDSstackDaily_long, select(dat, HouseholdID, weight))
+
+villageDat <- read.csv('DataParams/RHoMISmother_village.csv')
+villageDat$hhid <- as.character(villageDat$HouseholdID)
+dat <- left_join(dat, select(villageDat, hhid, village))
+
+distMatrixAll <- read.csv('SpatialLayers/villageDistMatrix.csv')
+
+#dat <- left_join(dat, distMatrix)
+dat <- left_join(dat, select(distMatrixAll[seq(1, nrow(distMatrixAll), by = 5),], HouseholdID, villageSpat1 = TargetID))
+dat$village2 <- ifelse(is.na(dat$village), dat$villageSpat1, dat$village)
+
+a <- table(dat$village2)<3
+groupVillage <- names(a)[a==T]
+
+dat <- left_join(dat, select(distMatrixAll[seq(2, nrow(distMatrixAll), by = 5),], HouseholdID, villageSpat2 = TargetID))
+dat$village3 <- ifelse(dat$village2 %in% groupVillage, as.character(dat$villageSpat2), as.character(dat$village2))
+
+#a <- table(dat$village3)<3
+#groupVillage <- names(a)[a==T]
+
+#dat <- left_join(dat, select(distMatrixAll[seq(2, nrow(distMatrixAll), by = 5),], HouseholdID, villageSpat3 = TargetID))
+#dat$village4 <- ifelse(dat$village3 %in% groupVillage, as.character(dat$villageSpat3), as.character(dat$village3))
+
+
+
+
+```
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+
+HDDSstackDaily_long$HDDSbothSeasons <- ifelse(HDDSstackDaily_long$Season == "good", HDDSstackDaily_long$HDDSgood, ifelse(HDDSstackDaily_long$Season == "bad", HDDSstackDaily_long$HDDSbad, NA))
+
+HDDSstackDaily_long <- left_join(HDDSstackDaily_long, select(dat, HouseholdID, farmType))
+
+```
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+#Table summarising determinants/associations
+#load('Models/HDDSnutrientDeterminantslme4.rda')
+#load('Models/HDDSnutrientDeterminantslme4_projectCountryLandOwned.rda')
+load('Models/HDDSnutrientDeterminantsNovRevisionsFinalAbsolute.rda')
+
+modSummary2 <- cbind(dimnames(summary(modHFIAPinsecure)$coefficients$cond)[[1]][1:12], summary(modHFIAPinsecure)$coefficients$cond[1:12, 1], summary(modHDDSgood)$coefficients[1:12, 1], summary(modHDDSbad)$coefficients[1:12, 1], summary(modCA)$coefficients$cond[1:12, 1], summary(modFE)$coefficients$cond[1:12, 1], summary(modThiamin)$coefficients$cond[1:12, 1],summary(modVIT.B6)$coefficients$cond[1:12, 1], summary(modRIBF)$coefficients$cond[1:12, 1], summary(modNiacin)$coefficients$cond[1:12, 1], summary(modVIT.B12)$coefficients$cond[1:12, 1])
+colnames(modSummary2) <- c("term", "HFIAP insecure", "MDDgood", "MDDbad", "CA", "FE", "Thiamine", "VITB6", "Riboflavin", "Niacin", "VITB12")
+modSummary2[, 2:11] <- apply(modSummary2[, 2:11], 2, function(x) {ifelse(x < 0, "-", "+")})
+
+modSummaryP <- cbind(dimnames(summary(modHFIAPinsecure)$coefficients$cond)[[1]][1:12], summary(modHFIAPinsecure)$coefficients$cond[1:12, 4], summary(modHDDSgood)$coefficients[1:12, 4], summary(modHDDSbad)$coefficients[1:12, 4], summary(modCA)$coefficients$cond[1:12, 4], summary(modFE)$coefficients$cond[1:12, 4], summary(modThiamin)$coefficients$cond[1:12, 4], summary(modVIT.B6)$coefficients$cond[1:12, 4], summary(modRIBF)$coefficients$cond[1:12, 4], summary(modNiacin)$coefficients$cond[1:12, 4], summary(modVIT.B12)$coefficients$cond[1:12, 4])
+colnames(modSummaryP) <- c("term", "HFIAP insecure", "MDDgood", "MDDbad", "CA", "FE", "Thiamine", "VITB6", "Riboflavin", "Niacin", "VITB12")
+
+modSummary2 <- data.frame(modSummary2, stringsAsFactors=FALSE)
+modSummaryP <- data.frame(modSummaryP, stringsAsFactors=FALSE)
+modSummaryP[,2:11] <- sapply(modSummaryP[,2:11], as.numeric)
+modSummary2[,2:11] <- replace(modSummary2[,2:11], modSummaryP[,2:11] > 0.05, "")
+
+modSummary2$term <- factor(modSummary2$term, levels = c("(Intercept)", "adultEq", "femaleHeady", "children_U101", "landcultivated", "tlu", "marketOrientationKcal",  "offIncomeBin1", "incomePPP", "homegardeny",  "cropProdDiv", "lvstProdHDDS", "AEZ.L"), ordered = T)
+modSummary2 <- arrange(modSummary2, term)
+
+```
+
+```{r, warning=FALSE, echo=F}
+
+pander(modSummary2)
+
+```
+
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+
+HFIAPl <- data.frame(variable = dimnames(summary(modHFIAPinsecure)$coefficients$cond)[[1]][1:13], HFIAP = paste0(sprintf("%.2f", round(summary(modHFIAPinsecure)$coefficients$cond[1:13, 1], 2)), " (", sprintf("%.2f", round(summary(modHFIAPinsecure)$coefficients$cond[1:13, 2], 2)), ")", ifelse( summary(modHFIAPinsecure)$coefficients$cond[1:13, 4] < 0.001, "***", ifelse(summary(modHFIAPinsecure)$coefficients$cond[1:13, 4] < 0.01, "**", ifelse(summary(modHFIAPinsecure)$coefficients$cond[1:13, 4] < 0.05, "*", "")))))
+
+HDDg <- data.frame(variable = names(summary(modHDDSgood)$coefficients[1:13, 1]), HDDSgood = paste0(sprintf("%.2f", round(summary(modHDDSgood)$coefficients[1:13, 1], 2)), " (", sprintf("%.2f", round(summary(modHDDSgood)$coefficients[1:13, 2], 2)), ")", ifelse(summary(modHDDSgood)$coefficients[1:13, 4] < 0.001, "***", ifelse(summary(modHDDSgood)$coefficients[1:13, 4] < 0.01, "**", ifelse(summary(modHDDSgood)$coefficients[1:13, 4] < 0.05, "*", "")))))
+
+HDDl <- data.frame(variable = names(summary(modHDDSbad)$coefficients[1:15, 1]), HDDSlean = paste0(sprintf("%.2f", round(summary(modHDDSbad)$coefficients[1:15, 1], 2)), " (", sprintf("%.2f", round(summary(modHDDSbad)$coefficients[1:15, 2], 2)), ")", ifelse(summary(modHDDSbad)$coefficients[1:15, 4] < 0.001, "***", ifelse(summary(modHDDSbad)$coefficients[1:15, 4] < 0.01, "**", ifelse(summary(modHDDSbad)$coefficients[1:15, 4] < 0.05, "*", "")))))
+
+
+# HDDl <- data.frame(variable = dimnames(summary(modHDDSbad)$coefficients$cond)[[1]][1:16], HDDSlean = paste0(sprintf("%.2f", round(summary(modHDDSbad)$coefficients$cond[1:16, 1], 2)), " (", sprintf("%.2f", round(summary(modHDDSbad)$coefficients$cond[1:16, 2], 2)), ")", ifelse( summary(modHDDSbad)$coefficients$cond[1:16, 4] < 0.001, "***", ifelse(summary(modHDDSbad)$coefficients$cond[1:16, 4] < 0.01, "**", ifelse(summary(modHDDSbad)$coefficients$cond[1:16, 4] < 0.05, "***", "")))))
+
+CA <- data.frame(variable = dimnames(summary(modCA)$coefficients$cond)[[1]][1:14], CA = paste0(sprintf("%.2f", round(summary(modCA)$coefficients$cond[1:14, 1], 2)), " (", sprintf("%.2f", round(summary(modCA)$coefficients$cond[1:14, 2], 2)), ")", ifelse( summary(modCA)$coefficients$cond[1:14, 4] < 0.001, "***", ifelse(summary(modCA)$coefficients$cond[1:14, 4] < 0.01, "**", ifelse(summary(modCA)$coefficients$cond[1:14, 4] < 0.05, "*", "")))))
+
+FE <- data.frame(variable = dimnames(summary(modFE)$coefficients$cond)[[1]][1:15], FE = paste0(sprintf("%.2f", round(summary(modFE)$coefficients$cond[1:15, 1], 2)), " (", sprintf("%.2f", round(summary(modFE)$coefficients$cond[1:15, 2], 2)), ")", ifelse( summary(modFE)$coefficients$cond[1:15, 4] < 0.001, "***", ifelse(summary(modFE)$coefficients$cond[1:15, 4] < 0.01, "**", ifelse(summary(modFE)$coefficients$cond[1:15, 4] < 0.05, "*", "")))))
+
+Thiamine <- data.frame(variable = dimnames(summary(modThiamin)$coefficients$cond)[[1]][1:13], Thiamine = paste0(sprintf("%.2f", round(summary(modThiamin)$coefficients$cond[1:13, 1], 2)), " (", sprintf("%.2f", round(summary(modThiamin)$coefficients$cond[1:13, 2], 2)), ")", ifelse( summary(modThiamin)$coefficients$cond[1:13, 4] < 0.001, "***", ifelse(summary(modThiamin)$coefficients$cond[1:13, 4] < 0.01, "**", ifelse(summary(modThiamin)$coefficients$cond[1:13, 4] < 0.05, "*", "")))))
+
+VitB6 <- data.frame(variable = dimnames(summary(modVIT.B6)$coefficients$cond)[[1]][1:13], VitB6 = paste0(sprintf("%.2f", round(summary(modVIT.B6)$coefficients$cond[1:13, 1], 2)), " (", sprintf("%.2f", round(summary(modVIT.B6)$coefficients$cond[1:13, 2], 2)), ")", ifelse( summary(modVIT.B6)$coefficients$cond[1:13, 4] < 0.001, "***", ifelse(summary(modVIT.B6)$coefficients$cond[1:13, 4] < 0.01, "**", ifelse(summary(modVIT.B6)$coefficients$cond[1:13, 4] < 0.05, "*", "")))))
+
+RIBF <- data.frame(variable = dimnames(summary(modRIBF)$coefficients$cond)[[1]][1:16], Riboflavin = paste0(sprintf("%.2f", round(summary(modRIBF)$coefficients$cond[1:16, 1], 2)), " (", sprintf("%.2f", round(summary(modRIBF)$coefficients$cond[1:16, 2], 2)), ")", ifelse( summary(modRIBF)$coefficients$cond[1:16, 4] < 0.001, "***", ifelse(summary(modRIBF)$coefficients$cond[1:16, 4] < 0.01, "**", ifelse(summary(modRIBF)$coefficients$cond[1:16, 4] < 0.05, "*", "")))))
+
+Niacin <- data.frame(variable = dimnames(summary(modNiacin)$coefficients$cond)[[1]][1:14], Niacin = paste0(sprintf("%.2f", round(summary(modNiacin)$coefficients$cond[1:14, 1], 2)), " (", sprintf("%.2f", round(summary(modNiacin)$coefficients$cond[1:14, 2], 2)), ")", ifelse( summary(modNiacin)$coefficients$cond[1:14, 4] < 0.001, "***", ifelse(summary(modNiacin)$coefficients$cond[1:14, 4] < 0.01, "**", ifelse(summary(modNiacin)$coefficients$cond[1:14, 4] < 0.05, "*", "")))))
+
+VitB12 <- data.frame(variable = dimnames(summary(modVIT.B12)$coefficients$cond)[[1]][1:14], B12 = paste0(sprintf("%.2f", round(summary(modVIT.B12)$coefficients$cond[1:14, 1], 2)), " (", sprintf("%.2f", round(summary(modVIT.B12)$coefficients$cond[1:14, 2], 2)), ")", ifelse( summary(modVIT.B12)$coefficients$cond[1:14, 4] < 0.001, "*", ifelse(summary(modVIT.B12)$coefficients$cond[1:14, 4] < 0.01, "**", ifelse(summary(modVIT.B12)$coefficients$cond[1:14, 4] < 0.05, "*", "")))))
+
+
+regressionTable <- Reduce(function(x, y) merge(x, y, all=TRUE, sort = F), list(HFIAPl, HDDg, HDDl, CA, FE, Thiamine, VitB6, RIBF, Niacin, VitB12))
+#regressionTable <- smartbind(HFIAPl, HDDg, HDDl, CA, FE, Thiamine, RIBF, Niacin, VitB12)  
+```
+
+Some text to sep tables
+```{r, warning=FALSE, echo=F}
+
+
+pander(regressionTable)
+
+
+```
+
+```{r, echo=F, fig.height=5, fig.width=9, warning=F, cache=F}
+scaleScores <- scale(select(dat, adultEq, landcultivated, tlu, incomePPP), center = T, scale = T)
+
+cent <- attr(scaleScores, "scaled:center")
+sca <- attr(scaleScores, "scaled:scale")
+
+
+#@ change logTLU to tlu if using older model without random effects from project
+tlu <- ggpredict(modHDDSbad, terms = c("tlu", "AEZ"), pretty = T)
+tlug <- ggpredict(modHDDSgood, terms = c("tlu", "AEZ"), pretty = T)
+tlu$Period <- "Lean"
+tlug$Period <- "Good"
+tlu <- rbind(tlu, tlug)
+tlu$x <- tlu$x * sca["tlu"] + cent["tlu"] #uncentre and scale predictor
+
+# tlu$group <- gsub("8", "8. Warm semi-arid", tlu$group)
+# tlu$group <- gsub("9", "9. Warm sub-humid", tlu$group)
+# tlu$group <- gsub("12", "12. Cool semi-arid", tlu$group)
+# tlu$group <- gsub("13", "13. Cool sub-humid", tlu$group)
+# tlu$group <- gsub("14", "14. Cool humid", tlu$group)
+# tlu$group <- factor(tlu$group, levels = c("8. Warm semi-arid", "9. Warm sub-humid", "12. Cool semi-arid", "13. Cool sub-humid", "14. Cool humid")) # "10. Warm humid", 
+
+land <- ggpredict(modHDDSbad, terms = c("landcultivated", "AEZ"), pretty = T)
+landg <- ggpredict(modHDDSgood, terms = c("landcultivated", "AEZ"), pretty = T)
+land$Period <- "Lean"
+landg$Period <- "Good"
+land <- rbind(land, landg)
+land$x <- land$x * sca["landcultivated"] + cent["landcultivated"]
+
+
+
+a <- ggpredict(modHDDSbad, terms = c("offIncomeBin", "AEZ"), pretty = T)
+ag <- ggpredict(modHDDSgood, terms = c("offIncomeBin", "AEZ"), pretty = T)
+a$Period <- "Lean"
+ag$Period <- "Good"
+a <- rbind(a, ag)
+
+# a$group <- gsub("8", "8. Warm semi-arid", a$group)
+# a$group <- gsub("9", "9. Warm sub-humid", a$group)
+# #a$group <- gsub("10", "10. Warm humid", a$group)
+# a$group <- gsub("12", "12. Cool semi-arid", a$group)
+# a$group <- gsub("13", "13. Cool sub-humid", a$group)
+# a$group <- gsub("14", "14. Cool humid", a$group)
+# a$group <- factor(a$group, levels = c("8. Warm semi-arid", "9. Warm sub-humid", "12. Cool semi-arid", "13. Cool sub-humid", "14. Cool humid")) # "10. Warm humid", 
+
+b <- ggpredict(modHDDSbad, terms = c("incomePPP", "AEZ"), pretty = T)
+bg <- ggpredict(modHDDSgood, terms = c("incomePPP", "AEZ"), pretty = T)
+b$Period <- "Lean"
+bg$Period <- "Good"
+b <- rbind(b, bg)
+b$x <- b$x * sca["incomePPP"] + cent["incomePPP"]
+
+# b$group <- gsub("8", "8. Warm semi-arid", b$group)
+# b$group <- gsub("9", "9. Warm sub-humid", b$group)
+# #b$group <- gsub("10", "10. Warm humid", b$group)
+# b$group <- gsub("12", "12. Cool semi-arid", b$group)
+# b$group <- gsub("13", "13. Cool sub-humid", b$group)
+# b$group <- gsub("14", "14. Cool humid", b$group)
+# b$group <- factor(b$group, levels = c("8. Warm semi-arid", "9. Warm sub-humid", "12. Cool semi-arid", "13. Cool sub-humid", "14. Cool humid")) #  "10. Warm humid", 
+
+
+
+d <- ggpredict(modHDDSbad, terms = c("lvstProdHDDS", "AEZ"), pretty = T)
+dg <- ggpredict(modHDDSgood, terms = c("lvstProdHDDS", "AEZ"), pretty = T)
+d$Period <- "Lean"
+dg$Period <- "Good"
+d <- rbind(d, dg)
+#d$x <- d$x * sca["lvstProdHDDS"] + cent["lvstProdHDDS"]
+
+# d$group <- gsub("8", "8. Warm semi-arid", d$group)
+# d$group <- gsub("9", "9. Warm sub-humid", d$group)
+# #d$group <- gsub("10", "10. Warm humid", d$group)
+# d$group <- gsub("12", "12. Cool semi-arid", d$group)
+# d$group <- gsub("13", "13. Cool sub-humid", d$group)
+# d$group <- gsub("14", "14. Cool humid", d$group)
+# d$group <- factor(d$group, levels = c("8. Warm semi-arid", "9. Warm sub-humid", "12. Cool semi-arid", "13. Cool sub-humid", "14. Cool humid")) #  "10. Warm humid", 
+
+e <- ggpredict(modHDDSbad, terms = c("adultEq", "AEZ"), pretty = T)
+eg <- ggpredict(modHDDSgood, terms = c("adultEq", "AEZ"), pretty = T)
+e$Period <- "Lean"
+eg$Period <- "Good"
+e <- rbind(e, eg)
+e$x <- e$x * sca["adultEq"] + cent["adultEq"]
+
+
+f <- ggpredict(modHDDSbad, terms = c("cropProdDiv", "AEZ"), pretty = T)
+fg <- ggpredict(modHDDSgood, terms = c("cropProdDiv", "AEZ"), pretty = T)
+f$Period <- "Lean"
+fg$Period <- "Good"
+f <- rbind(f, fg)
+#f$x <- f$x * sca["cropProdDiv"] + cent["cropProdDiv"]
+
+# f$group <- gsub("8", "8. Warm semi-arid", f$group)
+# f$group <- gsub("9", "9. Warm sub-humid", f$group)
+# #f$group <- gsub("10", "10. Warm humid", f$group)
+# f$group <- gsub("12", "12. Cool semi-arid", f$group)
+# f$group <- gsub("13", "13. Cool sub-humid", f$group)
+# f$group <- gsub("14", "14. Cool humid", f$group)
+# f$group <- factor(f$group, levels = c("8. Warm semi-arid", "9. Warm sub-humid", "12. Cool semi-arid", "13. Cool sub-humid", "14. Cool humid")) #  "10. Warm humid", 
+
+g <- ggpredict(modHDDSbad, terms = c("marketOrientationKcal", "AEZ"), pretty = T)
+gg <- ggpredict(modHDDSgood, terms = c("marketOrientationKcal", "AEZ"), pretty = T)
+g$Period <- "Lean"
+gg$Period <- "Good"
+g <- rbind(g, gg)
+#g$x <- g$x * sca["marketOrientationKcal"] + cent["marketOrientationKcal"]
+
+
+
+mfxadultEq <- ggplot(e, aes(x, predicted, colour = Period, fill = Period)) + geom_line() + geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = .1, colour = NA) + facet_wrap(~group)+ ylab("Diet diversity") + xlab("Household inhabitants (male adult equivalent)") + ggtitle("") + scale_y_continuous(limits = c(0, 8)) + coord_cartesian(xlim = c(0, 40)) + themeLegendTrunc + theme(legend.position ="none") + scale_color_manual(values = c("grey74", "black")) + scale_fill_manual(values=c("Good"="grey51","Lean"="grey74")) #, breaks = c(0,2,4,6,8, 10)
+
+mfxtlu <- ggplot(tlu, aes(x, predicted, colour = Period, fill = Period)) + geom_line() + geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = .1, colour = NA) + facet_wrap(~group)+ ylab("Diet diversity") + xlab("Livestock holdings (TLU)") + ggtitle("") + scale_y_continuous(limits = c(0, 8)) + coord_cartesian(xlim = c(0, 100)) + themeLegendTrunc + theme(legend.position ="none") + scale_color_manual(values = c("grey74", "black")) + scale_fill_manual(values=c("Good"="grey51","Lean"="grey74"))
+
+mfxland <- ggplot(land, aes(x, predicted, colour = Period, fill = Period)) + geom_line() + geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = .1, colour = NA) + facet_wrap(~group)+ ylab("Diet diversity") + xlab("Land cultivated (ha)") + ggtitle("") + scale_y_continuous(limits = c(0, 8)) + coord_cartesian(xlim = c(0, 40)) + themeLegendTrunc + theme(legend.position ="none") + scale_color_manual(values = c("grey74", "black")) + scale_fill_manual(values=c("Good"="grey51","Lean"="grey74"))
+
+mfxmarketOri <- ggplot(g, aes(x, predicted, colour = Period, fill = Period)) + geom_line() + geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = .1, colour = NA) + facet_wrap(~group)+ ylab("Diet diversity") + xlab("Market participation (proportion kcal sold)") + ggtitle("") + scale_y_continuous(limits = c(0, 8)) + scale_x_continuous(limits = c(0,1), breaks = c(0.25, 0.5, 0.75, 1)) + themeLegendTrunc + theme(legend.position ="none") + scale_color_manual(values = c("grey74", "black")) + scale_fill_manual(values=c("Good"="grey51","Lean"="grey74"))
+
+mfxOffIncome <- ggplot(a, aes(as.factor(x), predicted, ymin =conf.low, ymax = conf.high, colour = Period)) + geom_pointrange() + facet_wrap(~group)+ ylab("Diet diversity") + xlab("Off farm income") + ggtitle("") + scale_y_continuous(limits = c(0, 8)) + scale_x_discrete(labels=c("No","Yes")) + themeLegendTrunc + theme(legend.position ="none") + scale_color_manual(values = c("grey74", "black")) + scale_fill_manual(values=c("Good"="grey51","Lean"="grey74"))
+
+mfxIncome <- ggplot(b, aes(x/1000, predicted, colour = Period, fill = Period)) + geom_line() + geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = .1, colour = NA) + facet_wrap(~group)+ ylab("Diet diversity") + xlab("Gross income (PPP '000)") + ggtitle("") + scale_y_continuous(limits = c(0, 8)) + coord_cartesian(xlim = c(0, 75)) + themeLegendTrunc + theme(legend.position ="none") + scale_color_manual(values = c("grey74", "black")) + scale_fill_manual(values=c("Good"="grey51","Lean"="grey74"))
+
+mfxCropDiv <- ggplot(f, aes(as.factor(round(x,0)), predicted, ymin =conf.low, ymax = conf.high, colour = Period)) + geom_pointrange() + facet_wrap(~group)+ ylab("Diet diversity") + xlab("Crop product diversity") + ggtitle("") + scale_y_continuous(limits = c(0, 8)) + themeLegendTrunc + theme(legend.position ="none")  + scale_colour_manual(values = c("grey74", "black"))
+
+mfxLvstDiv <- ggplot(d, aes(as.factor(x), predicted, ymin =conf.low, ymax = conf.high, colour = Period)) + geom_pointrange() + facet_wrap(~group)+ ylab("Diet diversity") + xlab("Livestock product diversity") + ggtitle("") + scale_y_continuous(limits = c(0, 8)) + themeLegendTrunc + theme(legend.position ="none") + scale_colour_manual(values = c("grey74", "black")) # , breaks = c(2,4,6,8,10)
+
+plot_grid(
+mfxland
+,
+mfxtlu
+,
+mfxIncome
+,
+mfxCropDiv
+
+
+, align='hv', ncol = 2, labels="auto", hjust = 0, vjust=2,  label_fontfamily = "EB Garamond 08", rel_widths = c(1,1))
+```
+
+```{r, echo=F, fig.height=7.5, fig.width=9, warning=F}
+plot_grid(
+mfxadultEq
+,
+mfxOffIncome
+,
+mfxmarketOri
+,
+mfxLvstDiv
+
+, align='hv', ncol = 2, labels="auto", hjust = 0, vjust=2,  label_fontfamily = "EB Garamond 08", rel_widths = c(1,1))
+```
+
+```{r, echo=F, fig.height=8, fig.width=9, warning=F}
+#@ change logTLU to tlu if using older model without random effects from project
+# tlu <- ggpredict(modMNSource, terms = c("logTlu", "AEZ"), pretty = T)
+# 
+# tlu$group <- gsub("8", "8. Warm semi-arid", tlu$group)
+# tlu$group <- gsub("9", "9. Warm sub-humid", tlu$group)
+# 
+# tlu$group <- gsub("12", "12. Cool semi-arid", tlu$group)
+# tlu$group <- gsub("13", "13. Cool sub-humid", tlu$group)
+# tlu$group <- gsub("14", "14. Cool humid", tlu$group)
+# tlu$group <- factor(tlu$group, levels = c("8. Warm semi-arid", "9. Warm sub-humid", "12. Cool semi-arid", "13. Cool sub-humid", "14. Cool humid")) # "10. Warm humid", 
+# 
+# land <- ggpredict(modMNSource, terms = c("logLandowned", "AEZ"), pretty = T)
+# land$group <- gsub("8", "8. Warm semi-arid", land$group)
+# land$group <- gsub("9", "9. Warm sub-humid", land$group)
+# #land$group <- gsub("10", "10. Warm humid", land$group)
+# land$group <- gsub("12", "12. Cool semi-arid", land$group)
+# land$group <- gsub("13", "13. Cool sub-humid", land$group)
+# land$group <- gsub("14", "14. Cool humid", land$group)
+# land$group <- factor(land$group, levels = c("8. Warm semi-arid", "9. Warm sub-humid", "12. Cool semi-arid", "13. Cool sub-humid", "14. Cool humid")) #  "10. Warm humid", 
+# 
+# 
+# 
+# a <- ggpredict(modMNSource, terms = c("offIncomeBin", "AEZ"), pretty = T)
+# 
+# a$group <- gsub("8", "8. Warm semi-arid", a$group)
+# a$group <- gsub("9", "9. Warm sub-humid", a$group)
+# #a$group <- gsub("10", "10. Warm humid", a$group)
+# a$group <- gsub("12", "12. Cool semi-arid", a$group)
+# a$group <- gsub("13", "13. Cool sub-humid", a$group)
+# a$group <- gsub("14", "14. Cool humid", a$group)
+# a$group <- factor(a$group, levels = c("8. Warm semi-arid", "9. Warm sub-humid", "12. Cool semi-arid", "13. Cool sub-humid", "14. Cool humid")) # "10. Warm humid", 
+# 
+# b <- ggpredict(modMNSource, terms = c("logIncomePPP", "AEZ"), pretty = T)
+# b$group <- gsub("8", "8. Warm semi-arid", b$group)
+# b$group <- gsub("9", "9. Warm sub-humid", b$group)
+# #b$group <- gsub("10", "10. Warm humid", b$group)
+# b$group <- gsub("12", "12. Cool semi-arid", b$group)
+# b$group <- gsub("13", "13. Cool sub-humid", b$group)
+# b$group <- gsub("14", "14. Cool humid", b$group)
+# b$group <- factor(b$group, levels = c("8. Warm semi-arid", "9. Warm sub-humid", "12. Cool semi-arid", "13. Cool sub-humid", "14. Cool humid")) #  "10. Warm humid", 
+# 
+# 
+# 
+# c <- ggpredict(modMNSource, terms = c("homegarden", "AEZ"), pretty = T)
+# c$group <- gsub("8", "8. Warm semi-arid", c$group)
+# c$group <- gsub("9", "9. Warm sub-humid", c$group)
+# #c$group <- gsub("10", "10. Warm humid", c$group)
+# c$group <- gsub("12", "12. Cool semi-arid", c$group)
+# c$group <- gsub("13", "13. Cool sub-humid", c$group)
+# c$group <- gsub("14", "14. Cool humid", c$group)
+# c$group <- factor(c$group, levels = c("8. Warm semi-arid", "9. Warm sub-humid", "12. Cool semi-arid", "13. Cool sub-humid", "14. Cool humid")) #  "10. Warm humid", 
+# 
+# 
+# d <- ggpredict(modMNSource, terms = c("lvstProdHDDS", "AEZ"), pretty = T)
+# d$group <- gsub("8", "8. Warm semi-arid", d$group)
+# d$group <- gsub("9", "9. Warm sub-humid", d$group)
+# #d$group <- gsub("10", "10. Warm humid", d$group)
+# d$group <- gsub("12", "12. Cool semi-arid", d$group)
+# d$group <- gsub("13", "13. Cool sub-humid", d$group)
+# d$group <- gsub("14", "14. Cool humid", d$group)
+# d$group <- factor(d$group, levels = c("8. Warm semi-arid", "9. Warm sub-humid", "12. Cool semi-arid", "13. Cool sub-humid", "14. Cool humid")) #  "10. Warm humid", 
+# 
+# e <- ggpredict(modMNSource, terms = c("adultEq", "AEZ"), pretty = T)
+# e$group <- gsub("8", "8. Warm semi-arid", e$group)
+# e$group <- gsub("9", "9. Warm sub-humid", e$group)
+# #e$group <- gsub("10", "10. Warm humid", e$group)
+# e$group <- gsub("12", "12. Cool semi-arid", e$group)
+# e$group <- gsub("13", "13. Cool sub-humid", e$group)
+# e$group <- gsub("14", "14. Cool humid", e$group)
+# e$group <- factor(e$group, levels = c("8. Warm semi-arid", "9. Warm sub-humid", "12. Cool semi-arid", "13. Cool sub-humid", "14. Cool humid")) #  "10. Warm humid", 
+# 
+# f <- ggpredict(modMNSource, terms = c("cropProdDiv", "AEZ"), pretty = T)
+# f$group <- gsub("8", "8. Warm semi-arid", f$group)
+# f$group <- gsub("9", "9. Warm sub-humid", f$group)
+# #f$group <- gsub("10", "10. Warm humid", f$group)
+# f$group <- gsub("12", "12. Cool semi-arid", f$group)
+# f$group <- gsub("13", "13. Cool sub-humid", f$group)
+# f$group <- gsub("14", "14. Cool humid", f$group)
+# f$group <- factor(f$group, levels = c("8. Warm semi-arid", "9. Warm sub-humid", "12. Cool semi-arid", "13. Cool sub-humid", "14. Cool humid")) #  "10. Warm humid", 
+# 
+# mfxadultEq <- ggplot(e, aes(x, predicted)) + geom_line() + geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = .1) + facet_wrap(~group)+ ylab("MHDD in the lean period") + xlab("Household members (male adult equivalent)") + ggtitle("") + scale_y_continuous(limits = c(0, 6)) + themeLegendTrunc
+# 
+# mfxtlu <- ggplot(tlu, aes(x, predicted)) + geom_line() + geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = .1) + facet_wrap(~group)+ ylab("MHDD in the lean period") + xlab("Livestock holdings (log TLU)") + ggtitle("") + scale_y_continuous(limits = c(0, 6)) + coord_cartesian(xlim = c(0, 5)) + themeLegendTrunc
+# 
+# mfxland <- ggplot(land, aes(x, predicted)) + geom_line() + geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = .1) + facet_wrap(~group)+ ylab("MHDD in the lean period") + xlab("Land owned (log ha)") + ggtitle("") + scale_y_continuous(limits = c(0, 6)) + coord_cartesian(xlim = c(0, 5)) + themeLegendTrunc
+# 
+# mfxOffIncome <- ggplot(a, aes(as.factor(x), predicted, ymin =conf.low, ymax = conf.high)) + geom_pointrange() + facet_wrap(~group)+ ylab("MHDD in the lean period") + xlab("Off farm income") + ggtitle("") + scale_y_continuous(limits = c(0,6)) + scale_x_discrete(labels=c("No","Yes")) + themeLegendTrunc
+# 
+# mfxIncome <- ggplot(b, aes(x, predicted)) + geom_line() + geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = .1) + facet_wrap(~group)+ ylab("MHDD in the lean period") + xlab("Gross income (log PPP)") + ggtitle("") + scale_y_continuous(limits = c(0, 6)) + themeLegendTrunc
+# 
+# mfxGarden <- ggplot(c, aes(as.factor(x), predicted, ymin =conf.low, ymax = conf.high)) + geom_pointrange() + facet_wrap(~group)+ ylab("MHDD in the lean period") + xlab("Home garden") + ggtitle("") + scale_y_continuous(limits = c(0,6)) + scale_x_discrete(labels=c("No","Yes")) + themeLegendTrunc
+# 
+# mfxCropDiv <- ggplot(f, aes(as.factor(x), predicted, ymin =conf.low, ymax = conf.high)) + geom_pointrange() + facet_wrap(~group)+ ylab("MHDD in the lean period") + xlab("Crop product diversity") + ggtitle("") + scale_y_continuous(limits = c(0,6)) + themeLegendTrunc
+# 
+# mfxLvstDiv <- ggplot(d, aes(as.factor(x), predicted, ymin =conf.low, ymax = conf.high)) + geom_pointrange() + facet_wrap(~group)+ ylab("MHDD in the lean period") + xlab("Livestock product diversity") + ggtitle("") + scale_y_continuous(limits = c(0,6)) + themeLegendTrunc
+# 
+# plot_grid(
+# mfxadultEq
+# ,
+# mfxland
+# ,
+# mfxtlu
+# ,
+# mfxCropDiv
+# 
+# 
+# , align='hv', ncol = 2, labels="auto", hjust = 0, vjust=2,  label_fontfamily = "EB Garamond 08", rel_widths = c(1,1))
+```
+
+```{r, echo=F, fig.height=8, fig.width=9, warning=F}
+# plot_grid(
+# mfxOffIncome
+# ,
+# mfxIncome
+# ,
+# mfxGarden
+# ,
+# mfxLvstDiv
+# 
+# , align='hv', ncol = 2, labels="auto", hjust = 0, vjust=2,  label_fontfamily = "EB Garamond 08", rel_widths = c(1,1))
+```
+
+
+
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+datSel <- select(dat, farmType, adultEq, landowned, landcultivated, tlu, offIncomePPP, incomeFarmFemaleControl_prop, PPIscore, cropIncomePPP, liveAnimalPPP, livestockProdPPP, HDDSgoodDaily, HDDSbadDaily, numFoodShortMonth, marketOrientationKcal) 
+#cropHDDSDiv, lvstHDDSDiv, 
+datSummary <- gather(datSel, var, val, c("adultEq", "landowned", "landcultivated", "tlu", "offIncomePPP", "incomeFarmFemaleControl_prop", "PPIscore", "cropIncomePPP", "liveAnimalPPP", "livestockProdPPP", "HDDSgoodDaily", "HDDSbadDaily", "numFoodShortMonth", "marketOrientationKcal"))
+#"cropHDDSDiv", "lvstHDDSDiv",
+
+datSummary <- group_by(datSummary, farmType, var)
+datSummary <- summarise_if(datSummary, is.numeric, funs(median, IQR), na.rm=T)
+
+datSummary$farmType <- factor(datSummary$farmType, levels = c("Specialised cropping", "Diverse cropping", "Specialised cropping & livestock", "Diverse cropping & livestock"), ordered = T)
+
+datSummary$M_IQR <- paste0(round(datSummary$median, 2), " (", round(datSummary$IQR, 2), ")")
+datSummary <- spread(select(datSummary, -median, -IQR), farmType, M_IQR)
+
+
+
+datSummary$var <- factor(datSummary$var, levels = c("adultEq", "landowned", "landcultivated", "tlu", "offIncomePPP", "incomeFarmFemaleControl_prop", "PPIscore", "marketOrientationKcal", "cropIncomePPP", "liveAnimalPPP", "livestockProdPPP", "HDDSgoodDaily", "HDDSbadDaily", "numFoodShortMonth"))
+datSummary <- datSummary[order(datSummary$var),]
+datSummary$var <- as.character(c("Adult equivalents", "Land owned", "landcultivated", "Livestock holdings (TLU)", "Off-farm income (PPP)", "Female control of farm income", "PPI score", "Market orientation", "Crop income (PPP)", "Live animal (PPP)", "Livestock product income (PPP)", "HDDS good", "HDDS bad", "Number of food shortage months"
+))
+#"cropHDDSDiv", "lvstHDDSDiv",
+
+
+
+```
+
+```{r, warning=FALSE, echo=F}
+dat$farmType <- factor(dat$farmType, levels = c("Specialised cropping", "Diverse cropping", "Specialised cropping & livestock", "Diverse cropping & livestock"), ordered = T)
+
+pander(table(dat$farmType))
+
+```
+
+Farm type summary
+```{r, warning=FALSE, echo=F}
+
+pander(datSummary)
+
+```
+
+
+Channel of food access
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+HDDSstackDaily_long$Category <- gsub("eggs", "Eggs", HDDSstackDaily_long$Category)
+HDDSstackDaily_long$Category <- gsub("fru", "Fruit", HDDSstackDaily_long$Category)
+HDDSstackDaily_long$Category <- gsub("grRT", "Grains, roots, tubers, banana", HDDSstackDaily_long$Category)
+HDDSstackDaily_long$Category <- gsub("leg", "Legumes", HDDSstackDaily_long$Category)
+HDDSstackDaily_long$Category <- gsub("meat", "Meat", HDDSstackDaily_long$Category)
+HDDSstackDaily_long$Category <- gsub("milk", "Milk", HDDSstackDaily_long$Category)
+HDDSstackDaily_long$Category <- gsub("nutS", "Nuts & seeds", HDDSstackDaily_long$Category)
+HDDSstackDaily_long$Category <- gsub("vegA", "Vitamin A rich fruits and vegetables", HDDSstackDaily_long$Category)
+HDDSstackDaily_long$Category <- gsub("vegL", "Leafy vegetables", HDDSstackDaily_long$Category)
+HDDSstackDaily_long$Category <- gsub("vegO", "Other vegetables", HDDSstackDaily_long$Category)
+
+
+HDDSstackDaily_long$Category <- factor(HDDSstackDaily_long$Category, levels = rev(c("Grains, roots, tubers, banana", "Leafy vegetables", "Other vegetables", "Vitamin A rich fruits and vegetables", "Nuts & seeds", "Fruit", "Legumes", "Milk", "Meat", "Eggs")))
+stackColours <- rev(c(`Grains, roots, tubers, banana` = "#ecd200", `Leafy vegetables` = '#006837', `Other vegetables` = '#1a9850', `Vitamin A rich fruits and vegetables` = '#66bd63', `Nuts & seeds` = "#51504e", Fruit = "#b500b6", Legumes = "#fd8103", Milk = "#ffffff", Meat = '#d73027', Eggs = "#feffb3"))
+
+```
+
+```{r, echo=F, fig.height=12, fig.width=9, warning=F}
+HDDSstackDaily_long$Season <- gsub("bad", "Lean period", HDDSstackDaily_long$Season)
+HDDSstackDaily_long$Season <- gsub("good", "Good period", HDDSstackDaily_long$Season)
+
+
+
+HDDSstackDaily_extralong <- subset(HDDSstackDaily_long, val ==1 & !(Source %in% c("free", "daily")))
+HDDSstackDaily_extralong <- gather(select(HDDSstackDaily_extralong, -free, -X, -val, -Source, -HDDSonFarmCropsBadDaily, -HDDSonFarmLvstBadDaily, -HDDSonFarmCropsGoodDaily, -HDDSonFarmLvstGoodDaily), source, T_F, -HouseholdID, -country, -region, -HDDSgood, -HDDSbad, -Category, -Season, -HDDSonFarmGood, -HDDSonFarmBad, -HDDSpurchasedGood, -HDDSpurchasedBad, -farmSourceDependentGood, -HDDSbothSeasons, -farmType)
+HDDSstackDaily_extralong <- subset(HDDSstackDaily_extralong, T_F == TRUE)
+HDDSstackDaily_extralong$source <- gsub("bought", "Purchased", HDDSstackDaily_extralong$source)
+HDDSstackDaily_extralong$source <- gsub("onFarm", "Farm sourced", HDDSstackDaily_extralong$source)
+
+HDDSstackDaily_extralong$HDDSbothSeasonsPurch_Farm <- ifelse(HDDSstackDaily_extralong$source == "Purchased" & HDDSstackDaily_extralong$Season == "Lean period", HDDSstackDaily_extralong$HDDSpurchasedBad, 
+                                                             ifelse(HDDSstackDaily_extralong$source == "Farm sourced" & HDDSstackDaily_extralong$Season == "Lean period", HDDSstackDaily_extralong$HDDSonFarmBad, 
+                                                                    ifelse(HDDSstackDaily_extralong$source == "Purchased" & HDDSstackDaily_extralong$Season == "Good period", HDDSstackDaily_extralong$HDDSpurchasedGood, 
+                                                                    ifelse(HDDSstackDaily_extralong$source == "Farm sourced" & HDDSstackDaily_extralong$Season == "Good period", HDDSstackDaily_extralong$HDDSonFarmGood, NA))))
+
+subHDDSstackDaily_long <- HDDSstackDaily_long[HDDSstackDaily_long$val == 1,]
+subHDDSstackDaily_long$T_F <- TRUE
+subHDDSstackDaily_long$source <- "Total"
+subHDDSstackDaily_long$HDDSbothSeasonsPurch_Farm <- subHDDSstackDaily_long$HDDSbothSeasons
+HDDSstackDaily_extralong <- bind_rows(HDDSstackDaily_extralong, subHDDSstackDaily_long)
+
+HDDSstackDaily_extralong$farmType <- factor(HDDSstackDaily_extralong$farmType, levels = c("Specialised cropping", "Diverse cropping", "Specialised cropping & livestock", "Diverse cropping & livestock"), ordered = T)
+
+ggplot(subset(HDDSstackDaily_extralong, Season == "Lean period"), aes(x = as.factor(HDDSbothSeasonsPurch_Farm))) + geom_bar(aes(fill = Category), position = "fill", colour = "black") + scale_fill_manual(values = stackColours) + ylab("Proportion of households consuming a food category in a given MHDD count") + xlab("Household diet diversity (MHDD) in the lean period") + facet_grid(farmType ~ source) + themeLegendTrunc + theme(legend.text = element_text(size = 12, family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08"), strip.text.y = element_text(size = 14.5, family = "EB Garamond 08"), axis.title.y = element_text(size = 16, family = "EB Garamond 08"), axis.title.x = element_text(size = 16, family = "EB Garamond 08")) +  geom_density(aes(HDDSbothSeasonsPurch_Farm), adjust = 3) # + scale_fill_brewer(type = "div", palette = 8, direction = 1)
+```
+
+
+Prevalence by farm type
+
+
+
+```{r, echo=F, fig.height=6, fig.width=9, warning=F}
+allnutrientNplot <- allnutrientNplot[!is.na(allnutrientNplot$farmType),]
+allnutrientNplot$farmType <- factor(allnutrientNplot$farmType, levels = c("Specialised cropping", "Diverse cropping", "Specialised cropping & livestock", "Diverse cropping & livestock"), ordered = T)
+allnutrientNplot$nutrient <- gsub("CA", "Ca", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FE", "Fe", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ZN", "Zn", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("MG", "Mg", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ENERGY_KC", "MHFIAP", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VITA", "Vitamin A", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B12", "Vitamin B12", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B6", "Vitamin B6", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FOL", "Folate", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("NIA", "Niacin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("RIBF", "Riboflavin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("THIA", "Thiamine", allnutrientNplot$nutrient)
+
+allnutrientNplot$nutrient <- factor(allnutrientNplot$nutrient, levels = c("MHFIAP", "Ca", "Fe", "Zn", "Cu", "Mg", "Vitamin A", "Vitamin B6", "Vitamin C", "Thiamine", "Riboflavin", "Niacin", "Folate", "Vitamin B12"), ordered = T)
+
+```
+
+
+```{r, echo=F, fig.height=6, fig.width=9, warning=F}
+ggplot(subset(allnutrientNplot, avail %in% c("Full year", "Food secure") & nutrient %in% c("MHFIAP", "Ca", "Fe", "Thiamine",  "Riboflavin", "Niacin", "Vitamin B12")), aes(farmType, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(size = 1, fatten = 5) + scale_shape_manual(values = c("MHFIAP" = 16, "Ca" = 17, "Fe" = 15, "Thiamine" = 1,  "Riboflavin" = 2, "Niacin" = 0,  "Vitamin B12" = 9), guide = guide_legend(nrow = 1)) + ylab("Proportion of households with insecure access to food or \n no year-round 'source' of micronutrient") + xlab("Farm type") + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(size=10.5, family = "EB Garamond 08"), axis.title.y = element_text(size = 14, family = "EB Garamond 08"), axis.title.x = element_text(size = 14, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)
+
+
+ggplot(subset(allnutrientNplot, avail %in% c("Full year", "Food secure") & nutrient %in% c("Thiamine",  "Riboflavin", "Niacin")), aes(farmType, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(size = 1, fatten = 5) + scale_shape_manual(values = c("Niacin" = 17, "Riboflavin" = 15, "Thiamine" = 4)) + ylab("Proportion of households with insecure access to food or \n no year-round 'source' of micronutrient") + xlab("Farm type") + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(size=10.5, family = "EB Garamond 08"), axis.title.y = element_text(size = 14, family = "EB Garamond 08"), axis.title.x = element_text(size = 14, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)
+
+```
+
+
+
+#SI
+
+Farm type by region
+```{r, warning=FALSE, echo=F}
+
+pander(round(prop.table(table(dat$farmType, dat$eastWest), 1),2))
+
+```
+
+farm type by country
+```{r, warning=FALSE, echo=F}
+
+pander(round(prop.table(table(dat$farmType, dat$country), 1),2))
+
+```
+
+
+
+Subsistence Households only
+All micronutrients
+
+Number of households dependent on farm
+```{r, warning = FALSE, echo = FALSE}
+pander(table(dat$farmType[dat$farmSourceDependentGood ==1]))
+```
+
+```{r, echo=F, fig.height=6, fig.width=9, warning=F}
+show_n <- function(x){
+  return(data.frame(y = median(x)+10, label = paste0("n = ", length(x))))
+}
+subdatProdConsNutrition <- subset(datProdConsNutrition, farmSourceDependentGood == 1 & nutrient %in% c("CA", "FE", "ZN", "VITA", "VITC", "VIT.B6", "VIT.B12", "FOL", "NIA", "RIBF", "THIA"))
+subdatProdConsNutrition$nutrient <- gsub("CA", "Ca", subdatProdConsNutrition$nutrient)
+subdatProdConsNutrition$nutrient <- gsub("FE", "Fe", subdatProdConsNutrition$nutrient)
+subdatProdConsNutrition$nutrient <- gsub("ZN", "Zn", subdatProdConsNutrition$nutrient)
+
+subdatProdConsNutrition$nutrient <- gsub("VITC", "Vitamin C", subdatProdConsNutrition$nutrient)
+subdatProdConsNutrition$nutrient <- gsub("VITA", "Vitamin A", subdatProdConsNutrition$nutrient)
+subdatProdConsNutrition$nutrient <- gsub("VIT.B12", "Vitamin B12", subdatProdConsNutrition$nutrient)
+subdatProdConsNutrition$nutrient <- gsub("VIT.B6", "Vitamin B6", subdatProdConsNutrition$nutrient)
+subdatProdConsNutrition$nutrient <- gsub("FOL", "Folate", subdatProdConsNutrition$nutrient)
+subdatProdConsNutrition$nutrient <- gsub("NIA", "Niacin", subdatProdConsNutrition$nutrient)
+subdatProdConsNutrition$nutrient <- gsub("RIBF", "Riboflavin", subdatProdConsNutrition$nutrient)
+subdatProdConsNutrition$nutrient <- gsub("THIA", "Thiamine", subdatProdConsNutrition$nutrient)
+subdatProdConsNutrition$nutrient <- factor(subdatProdConsNutrition$nutrient, levels = c("Ca", "Fe", "Zn", "Vitamin A", "Vitamin B12", "Vitamin B6", "Vitamin C", "Folate", "Niacin", "Riboflavin", "Thiamine"), ordered = T)
+subdatProdConsNutrition$sourceAllYear <- ifelse(subdatProdConsNutrition$sourceAllYear %in% c("No source", "Partial year"), "No secure source", "Secure source")
+ggplot(subset(subdatProdConsNutrition, nutrient != "NA"), aes(as.factor(sourceAllYear), 100 - nutritionSufficPerc)) + geom_boxplot(outlier.shape = NA) + facet_wrap(~nutrient) + xlab("Availability of 'source' in MHDD") + ylab("Inadequacy of food availability (%)") + stat_summary(fun.data = show_n, geom = "text") + themeTrunc
+
+```
+
+```{r, echo=F, fig.height=6, fig.width=9, warning=F}
+
+subdatProdConsNutrition <- subset(datProdConsNutrition, farmSourceDependentGood == 1 & nutrient %in% c("ENERGY_KC", "PROCNT"))
+subdatProdConsNutrition$nutrient <- gsub("ENERGY_KC", "Energy (kcal)", subdatProdConsNutrition$nutrient)
+subdatProdConsNutrition$nutrient <- gsub("PROCNT", "Protein", subdatProdConsNutrition$nutrient)
+subdatProdConsNutrition$HFIAP <- ifelse(subdatProdConsNutrition$HFIAP %in% c("Severely food insecure"), "Severely food insecure", "Higher food security")
+subdatProdConsNutrition$HFIAP <- factor(subdatProdConsNutrition$HFIAP, levels = c("Severely food insecure", "Higher food security"))
+ggplot(subdatProdConsNutrition, aes(as.factor(HFIAP), 100 - nutritionSufficPerc)) + geom_boxplot(outlier.shape = NA) + facet_wrap(~nutrient) + xlab("Food security of access status") + ylab("Inadequacy of food availability (%)") + stat_summary(fun.data = show_n, geom = "text") + themeTrunc
+
+```
+
+```{r, echo=F, fig.height=5, fig.width=9, warning=F}
+##Recall period
+dat$interviewM <- months(as.Date(substr(dat$X_submission_time, 1, 10)), abbreviate = T)
+
+dat$interviewMno <- match(dat$interviewM, month.abb)
+dat$food_worst_monthno <- match(dat$food_worst_month, tolower(month.abb))
+
+dat$timeLapsedLean <- ifelse(dat$interviewMno > dat$food_worst_monthno, dat$interviewMno - dat$food_worst_monthno, 
+                             ifelse(dat$interviewMno == dat$food_worst_monthno, 0, 12 - (dat$food_worst_monthno - dat$interviewMno)))
+
+dat$food_best_monthno <- match(dat$food_best_month, tolower(month.abb))
+
+dat$timeLapsedGood <- ifelse(dat$interviewMno > dat$food_best_monthno, dat$interviewMno - dat$food_best_monthno, 
+                             ifelse(dat$interviewMno == dat$food_best_monthno, 0, 12 - (dat$food_best_monthno - dat$interviewMno)))
+
+ggplot(subset(dat, !(projectname %in% c("CCAFS", "SAIRLA"))), aes(paste(projectname, country), timeLapsedGood)) + geom_boxplot(outlier.shape = NA) + ylab("Recall period to good month") + xlab("Project") + themeTrunc
+```
+
+
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+##Create DFs for household composition and region (east/west Africa)
+subDatNutrition <- subset(datProdConsNutrition, nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+
+#subDatNutrition <- subset(datProdConsNutrition, farmSourceDependentGood == 1 & nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+
+
+#table(subDatNutrition$sourceAllYear, subDatNutrition$nutrient)
+#prop.table(table(subDatNutrition$sourceAllYear, subDatNutrition$nutrient, subDatNutrition$farmType), c(3,2))
+#prop.table(table(datProdConsNutrition$HFIAPallYear[datProdConsNutrition$nutrient == "ENERGY_KC"], datProdConsNutrition$nutrient[datProdConsNutrition$nutrient == "ENERGY_KC"], datProdConsNutrition$farmType[datProdConsNutrition$nutrient == "ENERGY_KC"]), c(3,2))
+
+microNplot <- left_join(count(subDatNutrition, sourceAllYear, nutrient, householdComposition), count(subDatNutrition, nutrient, householdComposition), by = c("nutrient", "householdComposition"))
+microNplot$prop <- microNplot$n.x / microNplot$n.y
+
+datProdConsNutrition$HFIAP <- gsub("Mildly food insecure", "Food secure", datProdConsNutrition$HFIAP)
+datProdConsNutrition$HFIAP <- gsub("Moderately food insecure", "Food secure", datProdConsNutrition$HFIAP)
+macroNplot <- left_join(count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], HFIAP, nutrient, householdComposition), count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], nutrient, householdComposition), by = c("nutrient", "householdComposition"))
+macroNplot$prop <- macroNplot$n.x / macroNplot$n.y
+colnames(microNplot)[1] <- "avail"
+colnames(macroNplot)[1] <- "avail"
+
+allnutrientNplot <- rbind(microNplot, macroNplot)
+```
+
+Household composition
+```{r, echo=F, fig.height=6, fig.width=9, warning=F}
+#allnutrientNplot$farmType <- factor(allnutrientNplot$farmType, levels = c("Cropping", "Horticulture", "Diverse cultivation", "Cropping & livestock", "Diverse cultivation & livestock", "Dairy"), ordered = T)
+allnutrientNplot$nutrient <- gsub("CA", "Ca", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FE", "Fe", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ZN", "Zn", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("MG", "Mg", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ENERGY_KC", "HFIAP", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VITA", "Vitamin A", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B12", "Vitamin B12", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B6", "Vitamin B6", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FOL", "Folate", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("NIA", "Niacin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("RIBF", "Riboflavin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("THIA", "Thiamine", allnutrientNplot$nutrient)
+
+allnutrientNplot$nutrient <- factor(allnutrientNplot$nutrient, levels = c("HFIAP", "Ca", "Fe", "Zn", "Cu", "Mg", "Vitamin A", "Vitamin B12", "Vitamin B6", "Vitamin C", "Riboflavin", "Niacin", "Folate", "Thiamine"), ordered = T)
+
+
+```
+
+
+#With CI
+```{r, echo=F, fig.height=6, fig.width=9, warning=F}
+ggplot(subset(allnutrientNplot, avail %in% c("Full year", "Food secure") & nutrient %in% c("HFIAP", "Ca", "Fe", "Thiamine", "Riboflavin", "Niacin", "Vitamin B12")), aes(householdComposition, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(size = 1, fatten = 5) + scale_shape_manual(values = c("HFIAP" = 16, "Ca" = 17, "Fe" = 15, "Thiamine" = 1,  "Riboflavin" = 2, "Niacin" = 0,  "Vitamin B12" = 9), guide = guide_legend(nrow = 1)) + ylab("Proportion of households with insecure access to food or \n no year-round 'source' of micronutrient") + xlab("Household composition") + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(size=10.5, family = "EB Garamond 08"), axis.title.y = element_text(size = 14, family = "EB Garamond 08"), axis.title.x = element_text(size = 14, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)
+
+
+ggplot(subset(allnutrientNplot, avail %in% c("Full year", "Food secure") & nutrient %in% c("Thiamine",  "Riboflavin", "Niacin")), aes(householdComposition, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(size = 1, fatten = 5) + scale_shape_manual(values = c("Niacin" = 17, "Riboflavin" = 15, "Thiamine" = 4)) + ylab("Proportion of households with insecure access to food or \n no year-round 'source' of micronutrient") + xlab("Household composition") + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(size=10.5, family = "EB Garamond 08"), axis.title.y = element_text(size = 14, family = "EB Garamond 08"), axis.title.x = element_text(size = 14, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)
+
+```
+
+#Region
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+##Create DFs for household composition and region (east/west Africa)
+subDatNutrition <- subset(datProdConsNutrition, nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+
+#subDatNutrition <- subset(datProdConsNutrition, farmSourceDependentGood == 1 & nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+
+
+#table(subDatNutrition$sourceAllYear, subDatNutrition$nutrient)
+#prop.table(table(subDatNutrition$sourceAllYear, subDatNutrition$nutrient, subDatNutrition$farmType), c(3,2))
+#prop.table(table(datProdConsNutrition$HFIAPallYear[datProdConsNutrition$nutrient == "ENERGY_KC"], datProdConsNutrition$nutrient[datProdConsNutrition$nutrient == "ENERGY_KC"], datProdConsNutrition$farmType[datProdConsNutrition$nutrient == "ENERGY_KC"]), c(3,2))
+
+microNplot <- left_join(count(subDatNutrition, sourceAllYear, nutrient, region), count(subDatNutrition, nutrient, region), by = c("nutrient", "region"))
+microNplot$prop <- microNplot$n.x / microNplot$n.y
+
+datProdConsNutrition$HFIAP <- gsub("Mildly food insecure", "Food secure", datProdConsNutrition$HFIAP)
+datProdConsNutrition$HFIAP <- gsub("Moderately food insecure", "Food secure", datProdConsNutrition$HFIAP)
+macroNplot <- left_join(count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], HFIAP, nutrient, region), count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], nutrient, region), by = c("nutrient", "region"))
+macroNplot$prop <- macroNplot$n.x / macroNplot$n.y
+colnames(microNplot)[1] <- "avail"
+colnames(macroNplot)[1] <- "avail"
+
+allnutrientNplot <- rbind(microNplot, macroNplot)
+
+allnutrientNplot$region <- gsub("eastAfrica", "East Africa", allnutrientNplot$region)
+allnutrientNplot$region <- gsub("westAfrica", "West Africa", allnutrientNplot$region)
+allnutrientNplot$region <- gsub("centralAfrica", "Centra Africa", allnutrientNplot$region)
+```
+
+
+
+```{r, echo=F, fig.height=6, fig.width=9, warning=F}
+#allnutrientNplot$farmType <- factor(allnutrientNplot$farmType, levels = c("Cropping", "Horticulture", "Diverse cultivation", "Cropping & livestock", "Diverse cultivation & livestock", "Dairy"), ordered = T)
+allnutrientNplot$nutrient <- gsub("CA", "Ca", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FE", "Fe", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ZN", "Zn", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("MG", "Mg", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ENERGY_KC", "HFIAP", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VITA", "Vitamin A", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B12", "Vitamin B12", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B6", "Vitamin B6", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FOL", "Folate", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("NIA", "Niacin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("RIBF", "Riboflavin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("THIA", "Thiamine", allnutrientNplot$nutrient)
+
+allnutrientNplot$nutrient <- factor(allnutrientNplot$nutrient, levels = c("HFIAP", "Ca", "Fe", "Zn", "Cu", "Mg", "Vitamin A", "Vitamin B12", "Vitamin B6", "Vitamin C", "Riboflavin", "Niacin", "Folate", "Thiamine"), ordered = T)
+
+```
+
+
+#With CI
+```{r, echo=F, fig.height=6, fig.width=9, warning=F}
+ggplot(subset(allnutrientNplot, avail %in% c("Full year", "Food secure") & nutrient %in% c("HFIAP", "Ca", "Fe", "Thiamine", "Riboflavin", "Niacin", "Vitamin B12")), aes(region, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(size = 1, fatten = 5) + scale_shape_manual(values = c("HFIAP" = 16, "Ca" = 17, "Fe" = 15, "Thiamine" = 1,  "Riboflavin" = 2, "Niacin" = 0,  "Vitamin B12" = 9), guide = guide_legend(nrow = 1)) + ylab("Proportion of households with insecure access to food or \n no year-round 'source' of micronutrient") + xlab("Region") + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(size=10.5, family = "EB Garamond 08"), axis.title.y = element_text(size = 14, family = "EB Garamond 08"), axis.title.x = element_text(size = 14, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)
+
+
+ggplot(subset(allnutrientNplot, avail %in% c("Full year", "Food secure") & nutrient %in% c("Thiamine",  "Riboflavin", "Niacin")), aes(region, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(size = 1, fatten = 5) + scale_shape_manual(values = c("Niacin" = 17, "Riboflavin" = 15, "Thiamine" = 4)) + ylab("Proportion of households with insecure access to food or \n no year-round 'source' of micronutrient") + xlab("Region") + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(size=10.5, family = "EB Garamond 08"), axis.title.y = element_text(size = 14, family = "EB Garamond 08"), axis.title.x = element_text(size = 14, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)
+
+```
+
+
+###AEZ
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+##Create DFs for household composition and region (east/west Africa)
+#!datProdConsNutrition <- left_join(datProdConsNutrition, select(dat, HouseholdID, AEZ = extract.AEZ..datXY.))
+
+subDatNutrition <- subset(datProdConsNutrition, nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+
+#subDatNutrition <- subset(datProdConsNutrition, farmSourceDependentGood == 1 & nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+
+
+#table(subDatNutrition$sourceAllYear, subDatNutrition$nutrient)
+#prop.table(table(subDatNutrition$sourceAllYear, subDatNutrition$nutrient, subDatNutrition$farmType), c(3,2))
+#prop.table(table(datProdConsNutrition$HFIAPallYear[datProdConsNutrition$nutrient == "ENERGY_KC"], datProdConsNutrition$nutrient[datProdConsNutrition$nutrient == "ENERGY_KC"], datProdConsNutrition$farmType[datProdConsNutrition$nutrient == "ENERGY_KC"]), c(3,2))
+
+microNplot <- left_join(count(subDatNutrition, sourceAllYear, nutrient, AEZ), count(subDatNutrition, nutrient, AEZ), by = c("nutrient", "AEZ"))
+microNplot$prop <- microNplot$n.x / microNplot$n.y
+
+datProdConsNutrition$HFIAP <- gsub("Mildly food insecure", "Food secure", datProdConsNutrition$HFIAP)
+datProdConsNutrition$HFIAP <- gsub("Moderately food insecure", "Food secure", datProdConsNutrition$HFIAP)
+macroNplot <- left_join(count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], HFIAP, nutrient, AEZ), count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], nutrient, AEZ), by = c("nutrient", "AEZ"))
+macroNplot$prop <- macroNplot$n.x / macroNplot$n.y
+colnames(microNplot)[1] <- "avail"
+colnames(macroNplot)[1] <- "avail"
+
+allnutrientNplot <- rbind(microNplot, macroNplot)
+
+```
+
+
+
+```{r, echo=F, fig.height=6, fig.width=9, warning=F}
+#allnutrientNplot$farmType <- factor(allnutrientNplot$farmType, levels = c("Cropping", "Horticulture", "Diverse cultivation", "Cropping & livestock", "Diverse cultivation & livestock", "Dairy"), ordered = T)
+allnutrientNplot$nutrient <- gsub("CA", "Ca", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FE", "Fe", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ZN", "Zn", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("MG", "Mg", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ENERGY_KC", "HFIAP", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VITA", "Vitamin A", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B12", "Vitamin B12", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B6", "Vitamin B6", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FOL", "Folate", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("NIA", "Niacin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("RIBF", "Riboflavin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("THIA", "Thiamine", allnutrientNplot$nutrient)
+
+allnutrientNplot$nutrient <- factor(allnutrientNplot$nutrient, levels = c("HFIAP", "Ca", "Fe", "Zn", "Cu", "Mg", "Vitamin A", "Vitamin B12", "Vitamin B6", "Vitamin C", "Riboflavin", "Niacin", "Folate", "Thiamine"), ordered = T)
+
+```
+
+
+#With CI
+```{r, echo=F, fig.height=6, fig.width=9, warning=F}
+ggplot(subset(allnutrientNplot, avail %in% c("Full year", "Food secure") & nutrient %in% c("HFIAP", "Ca", "Fe", "Thiamine", "Riboflavin", "Niacin", "Vitamin B12")), aes(AEZ, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(size = 1, fatten = 5) + scale_shape_manual(values = c("HFIAP" = 16, "Ca" = 17, "Fe" = 15, "Thiamine" = 1,  "Riboflavin" = 2, "Niacin" = 0,  "Vitamin B12" = 9), guide = guide_legend(nrow = 1)) + ylab("Proportion of households with insecure access to food or \n no year-round 'source' of micronutrient") + xlab("AEZ") + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(size=10.5, family = "EB Garamond 08"), axis.title.y = element_text(size = 14, family = "EB Garamond 08"), axis.title.x = element_text(size = 14, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)
+
+
+ggplot(subset(allnutrientNplot, avail %in% c("Full year", "Food secure") & nutrient %in% c("Thiamine",  "Riboflavin", "Niacin")), aes(AEZ, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(size = 1, fatten = 5) + scale_shape_manual(values = c("Niacin" = 17, "Riboflavin" = 15, "Thiamine" = 4)) + ylab("Proportion of households with insecure access to food or \n no year-round 'source' of micronutrient") + xlab("Household composition") + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(size=10.5, family = "EB Garamond 08"), axis.title.y = element_text(size = 14, family = "EB Garamond 08"), axis.title.x = element_text(size = 14, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)
+
+```
+
+
+###HDDS
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+##Create DFs for household composition and HDDS
+datProdConsNutrition <- left_join(datProdConsNutrition, select(dat, HouseholdID, HDDSgoodDaily, HDDSbadDaily))
+subDatNutrition <- subset(datProdConsNutrition, nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+
+#subDatNutrition <- subset(datProdConsNutrition, farmSourceDependentgoodDaily == 1 & nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+
+
+#table(subDatNutrition$sourceAllYear, subDatNutrition$nutrient)
+#prop.table(table(subDatNutrition$sourceAllYear, subDatNutrition$nutrient, subDatNutrition$farmType), c(3,2))
+#prop.table(table(datProdConsNutrition$HFIAPallYear[datProdConsNutrition$nutrient == "ENERGY_KC"], datProdConsNutrition$nutrient[datProdConsNutrition$nutrient == "ENERGY_KC"], datProdConsNutrition$farmType[datProdConsNutrition$nutrient == "ENERGY_KC"]), c(3,2))
+
+microNplot <- left_join(count(subDatNutrition, sourceRichGood, nutrient, HDDSgoodDaily), count(subDatNutrition, nutrient, HDDSgoodDaily), by = c("nutrient", "HDDSgoodDaily"))
+microNplot$prop <- microNplot$n.x / microNplot$n.y
+
+datProdConsNutrition$HFIAP <- gsub("Mildly food insecure", "Food secure", datProdConsNutrition$HFIAP)
+datProdConsNutrition$HFIAP <- gsub("Moderately food insecure", "Food secure", datProdConsNutrition$HFIAP)
+macroNplot <- left_join(count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], HFIAP, nutrient, HDDSgoodDaily), count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], nutrient, HDDSgoodDaily), by = c("nutrient", "HDDSgoodDaily"))
+macroNplot$prop <- macroNplot$n.x / macroNplot$n.y
+colnames(microNplot)[1] <- "avail"
+colnames(macroNplot)[1] <- "avail"
+
+allnutrientNplot <- rbind(microNplot, macroNplot)
+```
+
+
+
+```{r, echo=F, fig.height=6, fig.width=9, warning=F}
+#allnutrientNplot$farmType <- factor(allnutrientNplot$farmType, levels = c("Cropping", "Horticulture", "Diverse cultivation", "Cropping & livestock", "Diverse cultivation & livestock", "Dairy"), ordered = T)
+allnutrientNplot$nutrient <- gsub("CA", "Ca", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FE", "Fe", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ZN", "Zn", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("MG", "Mg", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ENERGY_KC", "HFIAP", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VITA", "Vitamin A", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B12", "Vitamin B12", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B6", "Vitamin B6", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FOL", "Folate", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("NIA", "Niacin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("RIBF", "Riboflavin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("THIA", "Thiamine", allnutrientNplot$nutrient)
+
+allnutrientNplot$nutrient <- factor(allnutrientNplot$nutrient, levels = c("HFIAP", "Ca", "Fe", "Zn", "Cu", "Mg", "Vitamin A", "Vitamin B12", "Vitamin B6", "Vitamin C", "Riboflavin", "Niacin", "Folate", "Thiamine"), ordered = T)
+
+```
+
+
+
+#With CI
+
+```{r, echo=F, fig.height=6, fig.width=9, warning=F}
+ggplot(subset(allnutrientNplot, avail %in% c("1", "Food secure") & nutrient %in% c("Ca", "Fe", "Vitamin B12") & HDDSgoodDaily != 0), aes(as.factor(HDDSgoodDaily), 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), shape = nutrient, colour = nutrient)) + geom_pointrange(size = 1, fatten = 5) + scale_shape_manual(values = c("Ca" = 17, "Fe" = 15, "Vitamin B12" = 4)) + ylab("Proportion of households with insecure access to food or \n no 'source' of micronutrient in the good period") + xlab("Modified Diet Diversity score sourced daily - good period") + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(size=10.5, family = "EB Garamond 08"), axis.title.y = element_text(size = 14, family = "EB Garamond 08"), axis.title.x = element_text(size = 14, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)
+
+```
+
+
+
+#Lean period
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+##Create DFs for household composition and HDDS
+subDatNutrition <- subset(datProdConsNutrition, nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+
+#subDatNutrition <- subset(datProdConsNutrition, farmSourceDependentbadDaily == 1 & nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+
+
+#table(subDatNutrition$sourceAllYear, subDatNutrition$nutrient)
+#prop.table(table(subDatNutrition$sourceAllYear, subDatNutrition$nutrient, subDatNutrition$farmType), c(3,2))
+#prop.table(table(datProdConsNutrition$HFIAPallYear[datProdConsNutrition$nutrient == "ENERGY_KC"], datProdConsNutrition$nutrient[datProdConsNutrition$nutrient == "ENERGY_KC"], datProdConsNutrition$farmType[datProdConsNutrition$nutrient == "ENERGY_KC"]), c(3,2))
+
+microNplot <- left_join(count(subDatNutrition, sourceRichLean, nutrient, HDDSbadDaily), count(subDatNutrition, nutrient, HDDSbadDaily), by = c("nutrient", "HDDSbadDaily"))
+microNplot$prop <- microNplot$n.x / microNplot$n.y
+
+datProdConsNutrition$HFIAP <- gsub("Mildly food insecure", "Food secure", datProdConsNutrition$HFIAP)
+datProdConsNutrition$HFIAP <- gsub("Moderately food insecure", "Food secure", datProdConsNutrition$HFIAP)
+macroNplot <- left_join(count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], HFIAP, nutrient, HDDSbadDaily), count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], nutrient, HDDSbadDaily), by = c("nutrient", "HDDSbadDaily"))
+macroNplot$prop <- macroNplot$n.x / macroNplot$n.y
+colnames(microNplot)[1] <- "avail"
+colnames(macroNplot)[1] <- "avail"
+
+allnutrientNplot <- rbind(microNplot, macroNplot)
+```
+
+
+
+```{r, echo=F, fig.height=6, fig.width=9, warning=F}
+#allnutrientNplot$farmType <- factor(allnutrientNplot$farmType, levels = c("Cropping", "Horticulture", "Diverse cultivation", "Cropping & livestock", "Diverse cultivation & livestock", "Dairy"), ordered = T)
+allnutrientNplot$nutrient <- gsub("CA", "Ca", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FE", "Fe", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("MG", "Mg", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ZN", "Zn", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ENERGY_KC", "HFIAP", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VITA", "Vitamin A", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B12", "Vitamin B12", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B6", "Vitamin B6", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FOL", "Folate", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("NIA", "Niacin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("RIBF", "Riboflavin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("THIA", "Thiamine", allnutrientNplot$nutrient)
+
+allnutrientNplot$nutrient <- factor(allnutrientNplot$nutrient, levels = c("HFIAP", "Ca", "Fe", "Zn", "Cu", "Mg", "Vitamin A", "Vitamin B12", "Vitamin B6", "Vitamin C", "Riboflavin", "Niacin", "Folate", "Thiamine"), ordered = T)
+
+
+
+```
+
+#With CI
+```{r, echo=F, fig.height=6, fig.width=9, warning=F}
+#Add this into the subset to include HFIAS , "Food secure"
+ggplot(subset(allnutrientNplot, avail %in% c("1") & nutrient %in% c("HFIAP", "Ca", "Fe", "Thiamine", "Riboflavin", "Niacin", "Vitamin B12") & HDDSbadDaily != 0), aes(as.factor(HDDSbadDaily), 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(size = 1, fatten = 5) + scale_shape_manual(values = c("HFIAP" = 16, "Ca" = 17, "Fe" = 15, "Thiamine" = 1,  "Riboflavin" = 2, "Niacin" = 0,  "Vitamin B12" = 9), guide = guide_legend(nrow = 1)) + ylab("Proportion of households with insecure access to food or \n no year-round 'source' of micronutrient") + xlab("Modified Diet Diversity score sourced daily - lean period") + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(size=10.5, family = "EB Garamond 08"), axis.title.y = element_text(size = 14, family = "EB Garamond 08"), axis.title.x = element_text(size = 14, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)
+
+```
+
+```{r, echo=F, fig.height=6, fig.width=9, warning=F}
+#Add this into the subset to include HFIAS , "Food secure"
+ggplot(subset(allnutrientNplot, avail %in% c("1") & nutrient %in% c("Thiamine", "Riboflavin", "Niacin") & HDDSbadDaily != 0), aes(as.factor(HDDSbadDaily), 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(size = 1, fatten = 5) + scale_shape_manual(values = c("Niacin" = 17, "Riboflavin" = 15, "Thiamine" = 4)) + ylab("Proportion of households with insecure access to food or \n no year-round 'source' of micronutrient") + xlab("Modified Diet Diversity score sourced daily - lean period") + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(size=10.5, family = "EB Garamond 08"), axis.title.y = element_text(size = 14, family = "EB Garamond 08"), axis.title.x = element_text(size = 14, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)
+
+```
+
+#Farm type and AEZ
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+#datProdConsNutrition[!(datProdConsNutrition$country %in% c("drc", "malawi", "mali")),] #@sensitivity to countries being over represented in one AEZ group
+#!datProdConsNutrition$AEZ[datProdConsNutrition$AEZ == "10"] <- "14. Cool humid"
+#!datProdConsNutrition$AEZ <- ifelse(datProdConsNutrition$AEZ %in% c("13. Cool sub-humid", "9. Warm sub-humid", "14. Cool humid"), "Humid or sub-humid", "Semi-arid")
+#datProdConsNutrition$AEZ <- ifelse(datProdConsNutrition$AEZ %in% c("13. Cool sub-humid", "9. Warm sub-humid", "14. Cool humid"), "Humid or sub-humid", datProdConsNutrition$AEZ)
+#datProdConsNutrition$AEZ <- ifelse(datProdConsNutrition$AEZ %in% c("13. Cool sub-humid", "12. Cool semi-arid"), "Land sensitve AEZ", "Other AEZ")
+
+
+subDatNutrition <- subset(datProdConsNutrition, nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+#subDatNutrition <- left_join(subDatNutrition, select(dat, HouseholdID, AEZ = extract.AEZ..datXY.))
+#subDatNutrition <- subset(datProdConsNutrition, farmSourceDependentGood == 1 & nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+#subDatNutrition$AEZ[subDatNutrition$AEZ == "10"] <- "14. Cool humid" # Too few HHs in warm sub-humid 
+
+
+
+#table(subDatNutrition$sourceAllYear, subDatNutrition$nutrient)
+#prop.table(table(subDatNutrition$sourceAllYear, subDatNutrition$nutrient, subDatNutrition$farmType), c(3,2))
+#prop.table(table(datProdConsNutrition$HFIAPallYear[datProdConsNutrition$nutrient == "ENERGY_KC"], datProdConsNutrition$nutrient[datProdConsNutrition$nutrient == "ENERGY_KC"], datProdConsNutrition$farmType[datProdConsNutrition$nutrient == "ENERGY_KC"]), c(3,2))
+
+microNplot <- left_join(count(subDatNutrition, sourceAllYear, nutrient, farmType, AEZ), count(subDatNutrition, nutrient, farmType, AEZ), by = c("nutrient", "farmType", "AEZ"))
+microNplot$prop <- microNplot$n.x / microNplot$n.y
+
+datProdConsNutrition$HFIAP <- gsub("Mildly food insecure", "Food secure", datProdConsNutrition$HFIAP)
+datProdConsNutrition$HFIAP <- gsub("Moderately food insecure", "Food secure", datProdConsNutrition$HFIAP)
+macroNplot <- left_join(count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], HFIAP, nutrient, farmType, AEZ), count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], nutrient, farmType, AEZ), by = c("nutrient", "farmType", "AEZ"))
+macroNplot$prop <- macroNplot$n.x / macroNplot$n.y
+colnames(microNplot)[1] <- "avail"
+colnames(macroNplot)[1] <- "avail"
+
+allnutrientNplot <- rbind(microNplot, macroNplot)
+
+
+allnutrientNplot$farmType <- factor(allnutrientNplot$farmType, levels = c("Specialised cropping", "Diverse cropping", "Specialised cropping & livestock", "Diverse cropping & livestock"), ordered = T)
+allnutrientNplot$nutrient <- gsub("CA", "Ca", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FE", "Fe", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ZN", "Zn", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("MG", "Mg", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ENERGY_KC", "HFIAP", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VITA", "Vitamin A", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B12", "Vitamin B12", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B6", "Vitamin B6", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FOL", "Folate", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("NIA", "Niacin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("RIBF", "Riboflavin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("THIA", "Thiamine", allnutrientNplot$nutrient)
+
+allnutrientNplot$nutrient[allnutrientNplot$nutrient == "HFIAP"] <- "MHFIAP"
+allnutrientNplot$nutrient <- factor(allnutrientNplot$nutrient, levels = c("MHFIAP", "Ca", "Fe", "Zn", "Cu", "Mg", "Vitamin A", "Vitamin C", "Thiamine", "Vitamin B6", "Riboflavin", "Niacin", "Folate", "Vitamin B12"), ordered = T)
+
+```
+
+```{r, echo=F, fig.height=7.5, fig.width=10, warning=F}
+ggplot(subset(allnutrientNplot, avail %in% c("Full year", "Food secure") & nutrient %in% c("MHFIAP", "Ca", "Fe", "Thiamine", "Riboflavin", "Niacin", "Vitamin B6", "Vitamin B12")), aes(farmType, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(position = position_dodge(width = 1.1, preserve = "total"), size = 1, fatten = 5) + scale_shape_manual(values = c("MHFIAP" = 16, "Ca" = 17, "Fe" = 15, "Thiamine" = 1, "Riboflavin" = 2, "Niacin" = 0,  "Vitamin B6" =11, "Vitamin B12" = 9), guide = guide_legend(nrow = 1)) + ylab("Proportion of households severely food insecure \n or lacking a year-round 'source' of micronutrient") + xlab("Farm type") + facet_wrap(~AEZ) + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=16, family = "EB Garamond 08"), axis.title.y = element_text(size = 16, family = "EB Garamond 08"), axis.title.x = element_text(size = 16, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0) + stat_summary(data = subset(allnutrientNplot, avail %in% c("Full year", "Food secure") & nutrient %in% c("Ca")), aes(label=paste0('n = ',n.y), y = 0), geom='text', col = 'black', cex=5, family = "EB Garamond 08")
+
+
+```
+
+```{r, echo=F, fig.height=6, fig.width=10, warning=F}
+ggplot(subset(allnutrientNplot, avail %in% c("Full year", "Food secure") & nutrient %in% c("Thiamine",  "Riboflavin", "Niacin")), aes(farmType, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(size = 1, fatten = 5) + scale_shape_manual(values = c("Niacin" = 17, "Riboflavin" = 15, "Thiamine" = 4)) + ylab("Proportion of households lacking a year-round 'source' /n of micronutrient") + xlab("Farm type") + facet_wrap(~AEZ) + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(angle = 45, hjust =1, size=14, family = "EB Garamond 08"), axis.title.y = element_text(size = 14, family = "EB Garamond 08"), axis.title.x = element_text(size = 14, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)
+```
+
+
+###By farm type, AEZ and farm area
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+
+#datProdConsNutrition <- left_join(datProdConsNutrition, select(dat, HouseholdID, farmTypeScale))
+subDatNutrition <- subset(datProdConsNutrition, nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+
+
+microNplot <- left_join(count(subDatNutrition, sourceAllYear, nutrient, farmTypeScale, AEZ), count(subDatNutrition, nutrient, farmTypeScale, AEZ), by = c("nutrient", "farmTypeScale", "AEZ"))
+microNplot$prop <- microNplot$n.x / microNplot$n.y
+
+datProdConsNutrition$HFIAP <- gsub("Mildly food insecure", "Food secure", datProdConsNutrition$HFIAP)
+datProdConsNutrition$HFIAP <- gsub("Moderately food insecure", "Food secure", datProdConsNutrition$HFIAP)
+macroNplot <- left_join(count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], HFIAP, nutrient, farmTypeScale, AEZ), count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], nutrient, farmTypeScale, AEZ), by = c("nutrient", "farmTypeScale", "AEZ"))
+macroNplot$prop <- macroNplot$n.x / macroNplot$n.y
+colnames(microNplot)[1] <- "avail"
+colnames(macroNplot)[1] <- "avail"
+
+allnutrientNplot <- rbind(microNplot, macroNplot)
+
+
+#allnutrientNplot$farmTypeScale <- factor(allnutrientNplot$farmTypeScale, levels = c("Specialised cropping", "Diverse cropping", "Specialised cropping & livestock", "Diverse cropping & livestock"), ordered = T)
+allnutrientNplot$nutrient <- gsub("CA", "Ca", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FE", "Fe", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ZN", "Zn", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("MG", "Mg", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ENERGY_KC", "HFIAP", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VITA", "Vitamin A", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B12", "Vitamin B12", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B6", "Vitamin B6", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FOL", "Folate", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("NIA", "Niacin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("RIBF", "Riboflavin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("THIA", "Thiamine", allnutrientNplot$nutrient)
+
+#allnutrientNplot$nutrient[allnutrientNplot$nutrient == "HFIAP"] <- "MHFIAP"
+allnutrientNplot$nutrient <- gsub("HFIAP", "Chronic hunger", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- factor(allnutrientNplot$nutrient, levels = c("Chronic hunger", "Ca", "Fe", "Zn", "Cu", "Mg", "Vitamin A", "Vitamin C", "Thiamine", "Vitamin B6", "Riboflavin", "Niacin", "Folate", "Vitamin B12"), ordered = T)
+
+
+
+```
+
+```{r, echo=F, fig.height=14, fig.width=10, warning=F}
+
+ggplot(subset(allnutrientNplot, avail %in% c("Full year", "Food secure") & nutrient %in% c("Chronic hunger", "Ca", "Niacin", "Vitamin B12")), aes(farmTypeScale, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(position = position_jitter(width = 0.2), size = 1, fatten = 5) + scale_shape_manual(values = c("Chronic hunger" = 16, "Ca" = 17, "Niacin" = 0,  "Vitamin B12" = 9), guide = guide_legend(nrow = 1)) + ylab("Proportion of households severely food insecure \n or lacking a year-round 'source' of micronutrient") + xlab("Farm type") + facet_wrap(~AEZ, ncol = 1) + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=14, family = "EB Garamond 08"), axis.title.y = element_text(size = 14, family = "EB Garamond 08"), axis.title.x = element_text(size = 14, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)
+
+
+```
+
+#Subset farm types
+```{r, echo=F, fig.height=7, fig.width=10, warning=F}
+allnutrientNplot <- subset(allnutrientNplot, farmTypeScale %in% c("Specialised cropping & livestock small", "Specialised cropping & livestock medium-large", "Diverse cropping & livestock small", "Diverse cropping & livestock medium-large"))
+
+#numberHHs <- group_by(subset(allnutrientNplot, nutrient == "Ca"), farmTypeScale, AEZ)
+#numberHHs <- summarise(numberHHs, n = length(nutrient))
+
+allnutrientNplot$farmTypeScale <- gsub("& livestock ", "", allnutrientNplot$farmTypeScale)
+allnutrientNplot$farmTypeScale <- factor(allnutrientNplot$farmTypeScale, levels = c("Specialised cropping small", "Specialised cropping medium-large", "Diverse cropping small", "Diverse cropping medium-large"), ordered = T)
+
+ggplot(subset(allnutrientNplot, avail %in% c("Full year", "Food secure") & nutrient %in% c("Chronic hunger", "Ca", "Niacin", "Vitamin B12")), aes(farmTypeScale, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(position = position_dodge(width = 1.1, preserve = "total"), size = 1, fatten = 5) + scale_shape_manual(values = c("Chronic hunger" = 16, "Ca" = 17, "Niacin" = 0, "Vitamin B12" = 9), guide = guide_legend(nrow = 1)) + ylab("Proportion of households chronically hungry \n or lacking a year-round 'source' of micronutrient") + xlab("Farm type and scale") + facet_wrap(~AEZ, ncol = 2) + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=16, family = "EB Garamond 08"), axis.title.y = element_text(size = 16, family = "EB Garamond 08"), axis.title.x = element_text(size = 16, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0) + stat_summary(data = subset(allnutrientNplot, avail %in% c("Full year", "Food secure") & nutrient %in% c("Chronic hunger")), aes(label=paste0('n = ',n.y), y = 0), geom='text', col = 'black', cex=5, family = "EB Garamond 08")
+
+
+```
+
+```{r, echo=F, fig.height=4.5, fig.width=9, warning=F}
+HDDSstackDaily_long$Season <- gsub("bad", "Lean period", HDDSstackDaily_long$Season)
+HDDSstackDaily_long$Season <- gsub("good", "Good period", HDDSstackDaily_long$Season)
+ggplot(subset(HDDSstackDaily_long, HDDSbothSeasons != 0 & val ==1), aes(x = as.factor(HDDSbothSeasons))) + geom_bar(aes(fill = Category), position = "fill", colour = "black") + scale_fill_manual(values = stackColours) + ylab("Proportion") + xlab("Household diet diversity") + facet_wrap(~ Season) + themeLegendTrunc + geom_density(aes(HDDSbothSeasons), adjust = 3) # + scale_fill_brewer(type = "div", palette = 8, direction = 1)
+```
+
+
+```{r, echo=F, fig.height=12, fig.width=9, warning=F}
+
+#ggplot(subset(HDDSstackDaily_extralong, Season == "Good period"), aes(x = as.factor(HDDSbothSeasonsPurch_Farm))) + geom_bar(aes(fill = Category), position = "fill", colour = "black") + scale_fill_manual(values = stackColours) + ylab("Proportion of households consuming a food category in a given MHDD count") + xlab("Household diet diversity (MHDD) in the good period") + facet_grid(farmType ~ source) + themeLegendTrunc + theme(strip.text.x = element_text(size = 16, family = "EB Garamond 08"), strip.text.y = element_text(size = 14, family = "EB Garamond 08")) + geom_density(aes(HDDSbothSeasonsPurch_Farm), adjust = 3) # + scale_fill_brewer(type = "div", palette = 8, direction = 1)
+
+
+ggplot(subset(HDDSstackDaily_extralong, Season == "Good period"), aes(x = as.factor(HDDSbothSeasonsPurch_Farm))) + geom_bar(aes(fill = Category), position = "fill", colour = "black") + scale_fill_manual(values = stackColours) + ylab("Proportion of households consuming a food category in a given MHDD count") + xlab("Household diet diversity (MHDD) in the flush period") + facet_grid(farmType ~ source) + themeLegendTrunc + theme(legend.text = element_text(size = 12, family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08"), strip.text.y = element_text(size = 14.5, family = "EB Garamond 08"), axis.title.y = element_text(size = 16, family = "EB Garamond 08"), axis.title.x = element_text(size = 16, family = "EB Garamond 08")) +  geom_density(aes(HDDSbothSeasonsPurch_Farm), adjust = 3) 
+```
+
+
+```{r, echo=F, fig.height=12, fig.width=9, warning=F}
+#HDDSstackDaily_long$Season <- gsub("bad", "Lean period", HDDSstackDaily_long$Season)
+#HDDSstackDaily_long$Season <- gsub("good", "Good period", HDDSstackDaily_long$Season)
+
+HDDSstackDaily_long <- left_join(HDDSstackDaily_long, select(dat, HouseholdID, farmTypeScale))
+
+HDDSstackDaily_extralong <- subset(HDDSstackDaily_long, val ==1 & !(Source %in% c("free", "daily")))
+HDDSstackDaily_extralong <- gather(select(HDDSstackDaily_extralong, -free, -X, -val, -Source, -farmType, -HDDSonFarmCropsBadDaily, -HDDSonFarmLvstBadDaily, -HDDSonFarmCropsGoodDaily, -HDDSonFarmLvstGoodDaily), source, T_F, -HouseholdID, -country, -region, -HDDSgood, -HDDSbad, -Category, -Season, -HDDSonFarmGood, -HDDSonFarmBad, -HDDSpurchasedGood, -HDDSpurchasedBad, -farmSourceDependentGood, -HDDSbothSeasons, -farmTypeScale)
+HDDSstackDaily_extralong <- subset(HDDSstackDaily_extralong, T_F == TRUE)
+HDDSstackDaily_extralong$source <- gsub("bought", "Purchased", HDDSstackDaily_extralong$source)
+HDDSstackDaily_extralong$source <- gsub("onFarm", "Farm sourced", HDDSstackDaily_extralong$source)
+
+HDDSstackDaily_extralong$HDDSbothSeasonsPurch_Farm <- ifelse(HDDSstackDaily_extralong$source == "Purchased" & HDDSstackDaily_extralong$Season == "Lean period", HDDSstackDaily_extralong$HDDSpurchasedBad, 
+                                                             ifelse(HDDSstackDaily_extralong$source == "Farm sourced" & HDDSstackDaily_extralong$Season == "Lean period", HDDSstackDaily_extralong$HDDSonFarmBad, 
+                                                                    ifelse(HDDSstackDaily_extralong$source == "Purchased" & HDDSstackDaily_extralong$Season == "Good period", HDDSstackDaily_extralong$HDDSpurchasedGood, 
+                                                                    ifelse(HDDSstackDaily_extralong$source == "Farm sourced" & HDDSstackDaily_extralong$Season == "Good period", HDDSstackDaily_extralong$HDDSonFarmGood, NA))))
+
+subHDDSstackDaily_long <- HDDSstackDaily_long[HDDSstackDaily_long$val == 1,]
+subHDDSstackDaily_long$T_F <- TRUE
+subHDDSstackDaily_long$source <- "Total"
+subHDDSstackDaily_long$HDDSbothSeasonsPurch_Farm <- subHDDSstackDaily_long$HDDSbothSeasons
+HDDSstackDaily_extralong <- bind_rows(HDDSstackDaily_extralong, subHDDSstackDaily_long)
+
+HDDSstackDaily_extralong$farmType <- factor(HDDSstackDaily_extralong$farmType, levels = c("Specialised cropping", "Diverse cropping", "Specialised cropping & livestock", "Diverse cropping & livestock"), ordered = T)
+
+ggplot(subset(HDDSstackDaily_extralong, Season == "Lean period"), aes(x = as.factor(HDDSbothSeasonsPurch_Farm))) + geom_bar(aes(fill = Category), position = "fill", colour = "black") + scale_fill_manual(values = stackColours) + ylab("Proportion") + xlab("Household diet diversity in the lean") + facet_wrap(farmTypeScale ~ source, ncol = 3) + themeLegendTrunc + geom_density(aes(HDDSbothSeasonsPurch_Farm), adjust = 3) # + scale_fill_brewer(type = "div", palette = 8, direction = 1)
+```
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+datProdConsNutrition <- left_join(datProdConsNutrition, select(dat, HouseholdID, landcultivated))
+datProdConsNutrition$smallholder <- ifelse(datProdConsNutrition$landcultivated <2.01, "Smallholder", "Larger scale")
+datProdConsNutrition$AEZ_small <- paste(datProdConsNutrition$AEZ, datProdConsNutrition$smallholder, sep = "_")
+
+subDatNutrition <- subset(datProdConsNutrition, nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+#subDatNutrition <- left_join(subDatNutrition, select(dat, HouseholdID, AEZ = extract.AEZ..datXY.))
+#subDatNutrition <- subset(datProdConsNutrition, farmSourceDependentGood == 1 & nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+#subDatNutrition$AEZ[subDatNutrition$AEZ == "10"] <- "14. Cool humid" # Too few HHs in warm sub-humid 
+
+
+
+#table(subDatNutrition$sourceAllYear, subDatNutrition$nutrient)
+#prop.table(table(subDatNutrition$sourceAllYear, subDatNutrition$nutrient, subDatNutrition$farmType), c(3,2))
+#prop.table(table(datProdConsNutrition$HFIAPallYear[datProdConsNutrition$nutrient == "ENERGY_KC"], datProdConsNutrition$nutrient[datProdConsNutrition$nutrient == "ENERGY_KC"], datProdConsNutrition$farmType[datProdConsNutrition$nutrient == "ENERGY_KC"]), c(3,2))
+
+
+microNplot <- left_join(count(subDatNutrition, sourceAllYear, nutrient, farmType, AEZ_small), count(subDatNutrition, nutrient, farmType, AEZ_small), by = c("nutrient", "farmType", "AEZ_small"))
+microNplot$prop <- microNplot$n.x / microNplot$n.y
+
+datProdConsNutrition$HFIAP <- gsub("Mildly food insecure", "Food secure", datProdConsNutrition$HFIAP)
+datProdConsNutrition$HFIAP <- gsub("Moderately food insecure", "Food secure", datProdConsNutrition$HFIAP)
+macroNplot <- left_join(count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], HFIAP, nutrient, farmType, AEZ_small), count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], nutrient, farmType, AEZ_small), by = c("nutrient", "farmType", "AEZ_small"))
+macroNplot$prop <- macroNplot$n.x / macroNplot$n.y
+colnames(microNplot)[1] <- "avail"
+colnames(macroNplot)[1] <- "avail"
+
+allnutrientNplot <- rbind(microNplot, macroNplot)
+
+
+allnutrientNplot$farmType <- factor(allnutrientNplot$farmType, levels = c("Specialised cropping", "Diverse cropping", "Specialised cropping & livestock", "Diverse cropping & livestock"), ordered = T)
+allnutrientNplot$nutrient <- gsub("CA", "Ca", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FE", "Fe", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ZN", "Zn", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("MG", "Mg", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ENERGY_KC", "HFIAP", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VITA", "Vitamin A", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B12", "Vitamin B12", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B6", "Vitamin B6", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FOL", "Folate", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("NIA", "Niacin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("RIBF", "Riboflavin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("THIA", "Thiamine", allnutrientNplot$nutrient)
+
+allnutrientNplot$nutrient[allnutrientNplot$nutrient == "HFIAP"] <- "MHFIAP"
+allnutrientNplot$nutrient <- factor(allnutrientNplot$nutrient, levels = c("MHFIAP", "Ca", "Fe", "Zn", "Cu", "Mg", "Vitamin A", "Vitamin B6", "Vitamin C", "Thiamine", "Riboflavin", "Niacin", "Folate", "Vitamin B12"), ordered = T)
+
+```
+
+```{r, echo=F, fig.height=7, fig.width=10, warning=F}
+ggplot(subset(allnutrientNplot, avail %in% c("Full year", "Food secure") & nutrient %in% c("MHFIAP", "Ca", "Fe", "Thiamine",  "Riboflavin", "Niacin", "Vitamin B12")), aes(farmType, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(size = 1, fatten = 5) + scale_shape_manual(values = c("MHFIAP" = 16, "Ca" = 17, "Fe" = 15, "Thiamine" = 1,  "Riboflavin" = 2, "Niacin" = 0,  "Vitamin B12" = 9), guide = guide_legend(nrow = 1)) + ylab("Proportion of households severely food insecure \n or lacking a year-round 'source' of micronutrient") + xlab("Farm type") + facet_wrap(~AEZ_small) + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=14, family = "EB Garamond 08"), axis.title.y = element_text(size = 14, family = "EB Garamond 08"), axis.title.x = element_text(size = 14, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)
+
+
+```
+
+```{r, echo=F, fig.height=7, fig.width=10, warning=F}
+themeTrunc <- theme_bw() + theme(text = element_text(size=14, family = "EB Garamond 08"),  strip.text.x = element_text(size=16, family = "EB Garamond 08"), axis.text.x = element_text(hjust = 1, size=16, family = "EB Garamond 08"), axis.text.y = element_text(size=16, family = "EB Garamond 08"), axis.title.y = element_text(size = 16, family = "EB Garamond 08"), axis.title.x = element_text(size = 16, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.position='none', strip.background = element_blank()) 
+#Commented out post submission themeTrunc <- theme_bw() + theme(axis.text.x = element_text(hjust = 1, size=14, family = "EB Garamond 08"), axis.text.y = element_text(size=14, family = "EB Garamond 08"), axis.title.y = element_text(size = 14, family = "EB Garamond 08"), axis.title.x = element_text(size = 14, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.position='none', strip.background = element_blank()) 
+
+dat$AEZ <- dat$extract.AEZ..datXY.
+dat$AEZ[dat$AEZ == 10] <- "14. Cool humid" # Too few HHs in warm sub-humid for the models to converge. These households in both DRC and Kenya sit on the boarder with AEZ 14
+
+dat$AEZ <- factor(ifelse(dat$AEZ %in% c("13. Cool sub-humid", "9. Warm sub-humid", "14. Cool humid"), "Humid or sub-humid", "Semi-arid"), levels = c("Semi-arid", "Humid or sub-humid"), ordered = T)
+
+leanMonths <- select(dat, HouseholdID, farmType, AEZ, country, foodshortagetime_months_which)
+leanMonths <- separate(leanMonths, foodshortagetime_months_which, into = c("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"), sep = " ")
+leanMonthsLong <- gather(leanMonths, monthLetter, month, -HouseholdID, -farmType, -AEZ, -country)
+leanMonthsLong <- subset(leanMonthsLong, !is.na(month))
+leanMonthsLong$MonthNo <- match(leanMonthsLong$month, tolower(month.abb))
+
+
+leanMonthsLong$country <- gsub("(^[[:alpha:]])", "\\U\\1", leanMonthsLong$country, perl=TRUE)
+leanMonthsLong$country <- gsub("Burkina faso", "Burkina Faso", leanMonthsLong$country, perl=TRUE)
+
+countryAez <- group_by(leanMonthsLong, country, AEZ)
+countryAez <- summarise(countryAez, n = length(MonthNo))
+countryAez$n <- format(countryAez$n, nsmall=1, big.mark=",") 
+countryAez$n <- paste0("n = ", countryAez$n)
+#table(leanMonthsLong$country, leanMonthsLong$AEZ)
+
+ggplot(subset(leanMonthsLong, country %in% c("Burkina Faso", "Kenya")), aes(MonthNo)) + geom_density(adjust = 2, size = 1) + facet_wrap(~country + AEZ) + ylab("Density of households experiencing scarcity") + xlab("Months where food scarcity is experienced") + scale_x_continuous(breaks = c(1:12)) + geom_text(data=subset(countryAez, country %in% c("Burkina Faso", "Kenya")), aes(x=11, y=1, label=n), size = 5, colour="black", inherit.aes=FALSE, parse=FALSE, family = "EB Garamond 08") + themeTrunc
+
+ggplot(subset(leanMonthsLong, country %in% c("Burkina Faso", "Kenya")), aes(MonthNo)) + geom_histogram(binwidth = 1) + facet_wrap(~country + AEZ) + ylab("Count of households experiencing scarcity") + xlab("Months where food scarcity is experienced") + scale_x_continuous(breaks = c(1:12)) + themeTrunc
+
+ggplot(leanMonthsLong, aes(MonthNo)) + geom_density() + facet_wrap(~farmType + AEZ, ncol = 2) + ylab("Count of households experiencing scarcity") + xlab("Months where food scarcity is experienced") + scale_x_continuous(breaks = c(1:12)) + themeTrunc
+
+ggplot(leanMonthsLong, aes(MonthNo)) + geom_histogram(binwidth = 1) + facet_wrap(~farmType + AEZ, ncol =2) + ylab("Count of households experiencing scarcity") + xlab("Months where food scarcity is experienced") + scale_x_continuous(breaks = c(1:12)) + themeTrunc
+
+prop.table(table(dat$numFoodShortMonth[dat$country == "burkina faso"], dat$AEZ[dat$country == "burkina faso"]), 2)
+```
+
+```{r, echo=F, fig.height=7, fig.width=10, warning=F}
+histDat <- gather(select(dat, HDDSbad, HDDSgood, AEZ), Period, DD, -AEZ)
+histDat$Period <- gsub("HDDSbad", "Lean period", histDat$Period)
+histDat$Period <- gsub("HDDSgood", "Flush period", histDat$Period)
+
+ggplot(histDat, aes(DD)) + geom_histogram() + facet_wrap(~Period + AEZ) + scale_x_continuous(breaks = c(1:10)) + themeTrunc + xlab("Diet diversity") + ylab("Count of households")
+
+plot(dat$HDDSbadDaily ~ rowSums(dat[, c("HDDSonFarmBadDaily", "HDDSpurchasedBadDaily")], na.rm=T))
+```
+
+
+#########Post opponent revisions
+
+#total population prevalence estimates
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+
+
+datProdConsNutrition$HFIAP <- gsub("Mildly food insecure", "Food secure", datProdConsNutrition$HFIAP)
+datProdConsNutrition$HFIAP <- gsub("Moderately food insecure", "Food secure", datProdConsNutrition$HFIAP)
+
+subDatNutrition <- subset(datProdConsNutrition, nutrient %in% c("ENERGY_KC", "THIA",	"RIBF",	"NIA",	"VIT.B6",	"VIT.B12", "CA",	"FE"))
+
+
+subDatNutrition$source <- ifelse(subDatNutrition$sourceAllYear == "Full year", 1*subDatNutrition$weight, 0)
+subDatNutrition$source <- ifelse(subDatNutrition$nutrient %in% c("ENERGY_KC") & subDatNutrition$HFIAP == "Food secure", 1*subDatNutrition$weight, subDatNutrition$source)
+subDatNutrition$countVar <- subDatNutrition$weight
+subDatNutrition <- group_by(subDatNutrition, nutrient)
+microNplot <- left_join(summarise(subDatNutrition, n.x = sum(source)), summarise(subDatNutrition, n.y = sum(countVar)))
+microNplot$prop <- 1 - (microNplot$n.x / microNplot$n.y)
+#microNplot <- data.frame(avail = "full year", microNplot)
+
+
+
+```
+
+
+#Farm type and AEZ
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+
+#datProdConsNutrition <- left_join(datProdConsNutrition, select(dat, HouseholdID, projectname))
+#datProdConsNutrition <- subset(datProdConsNutrition, projectname != "I4IGalvmed")
+
+subDatNutrition <- subset(datProdConsNutrition, nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+#subDatNutrition <- left_join(subDatNutrition, select(dat, HouseholdID, AEZ = extract.AEZ..datXY.))
+#subDatNutrition <- subset(datProdConsNutrition, farmSourceDependentGood == 1 & nutrient %in% c("VITA",	"VITE",	"VITC",	"THIA",	"RIBF",	"NIA",	"VIT.B6",	"FOL",	"VIT.B12", "PANT", "CA",	"P",	"MG",	"K",	"FE",	"ZN",	"CU",	"MN"))
+#subDatNutrition$AEZ[subDatNutrition$AEZ == "10"] <- "14. Cool humid" # Too few HHs in warm sub-humid 
+
+
+
+#table(subDatNutrition$sourceAllYear, subDatNutrition$nutrient)
+#prop.table(table(subDatNutrition$sourceAllYear, subDatNutrition$nutrient, subDatNutrition$farmType), c(3,2))
+#prop.table(table(datProdConsNutrition$HFIAPallYear[datProdConsNutrition$nutrient == "ENERGY_KC"], datProdConsNutrition$nutrient[datProdConsNutrition$nutrient == "ENERGY_KC"], datProdConsNutrition$farmType[datProdConsNutrition$nutrient == "ENERGY_KC"]), c(3,2))
+
+subDatNutrition$source <- ifelse(subDatNutrition$sourceAllYear == "Full year", 1*subDatNutrition$weight, 0)
+subDatNutrition$countVar <- subDatNutrition$weight
+subDatNutrition <- group_by(subDatNutrition, nutrient, farmType, AEZ)
+microNplot <- left_join(summarise(subDatNutrition, n.x = sum(source)), summarise(subDatNutrition, n.y = sum(countVar)))
+microNplot$prop <- microNplot$n.x / microNplot$n.y
+#microNplot <- data.frame(avail = "full year", microNplot)
+
+
+datProdConsNutrition$HFIAP <- gsub("Mildly food insecure", "Food secure", datProdConsNutrition$HFIAP)
+datProdConsNutrition$HFIAP <- gsub("Moderately food insecure", "Food secure", datProdConsNutrition$HFIAP)
+
+macroNplot <- group_by(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC"),], nutrient, farmType, AEZ)
+macroNplot$source <- ifelse(macroNplot$HFIAP == "Food secure", 1*macroNplot$weight, 0)
+macroNplot$countVar <- macroNplot$weight
+
+
+macroNplot <- left_join(summarise(macroNplot, n.x = sum(source)), summarise(macroNplot, n.y = sum(countVar)))
+macroNplot$prop <- macroNplot$n.x / macroNplot$n.y
+
+
+#macroNplot <- left_join(count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC"),], HFIAP, nutrient, farmType, AEZ), count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], nutrient, farmType, AEZ), by = c("nutrient", "farmType", "AEZ"))
+#macroNplot$prop <- macroNplot$n.x / macroNplot$n.y
+#colnames(microNplot)[1] <- "avail"
+#colnames(macroNplot)[1] <- "avail"
+
+allnutrientNplot <- rbind(microNplot, macroNplot)
+
+
+allnutrientNplot$farmType <- factor(allnutrientNplot$farmType, levels = c("Specialised cropping", "Diverse cropping", "Specialised cropping & livestock", "Diverse cropping & livestock"), ordered = T)
+allnutrientNplot$nutrient <- gsub("CA", "Ca", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FE", "Fe", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ZN", "Zn", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("MG", "Mg", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ENERGY_KC", "HFIAP", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VITA", "Vitamin A", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B12", "Vitamin B12", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B6", "Vitamin B6", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FOL", "Folate", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("NIA", "Niacin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("RIBF", "Riboflavin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("THIA", "Thiamine", allnutrientNplot$nutrient)
+
+allnutrientNplot$nutrient[allnutrientNplot$nutrient == "HFIAP"] <- "MHFIAP"
+allnutrientNplot$nutrient <- factor(allnutrientNplot$nutrient, levels = c("MHFIAP", "Ca", "Fe", "Zn", "Cu", "Mg", "Vitamin A", "Vitamin C", "Thiamine", "Vitamin B6", "Riboflavin", "Niacin", "Folate", "Vitamin B12"), ordered = T)
+
+```
+
+```{r, echo=F, fig.height=7.5, fig.width=10, warning=F}
+ggplot(subset(allnutrientNplot, nutrient %in% c("MHFIAP", "Ca", "Fe", "Thiamine", "Riboflavin", "Niacin", "Vitamin B6", "Vitamin B12")), aes(farmType, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(position = position_dodge(width = 1.1, preserve = "total"), size = 1, fatten = 5) + scale_shape_manual(values = c("MHFIAP" = 16, "Ca" = 17, "Fe" = 15, "Thiamine" = 1, "Riboflavin" = 2, "Niacin" = 0,  "Vitamin B6" =11, "Vitamin B12" = 9), guide = guide_legend(nrow = 1)) + ylab("Proportion of households severely food insecure \n or lacking a year-round 'source' of micronutrient") + xlab("Farm type") + facet_wrap(~AEZ) + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=16, family = "EB Garamond 08"), axis.title.y = element_text(size = 16, family = "EB Garamond 08"), axis.title.x = element_text(size = 16, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)# + stat_summary(data = subset(allnutrientNplot, nutrient %in% c("Ca")), aes(label=paste0('n = ',n.y), y = 0), geom='text', col = 'black', cex=5, family = "EB Garamond 08")
+
+
+```
+
+```{r, echo=F, fig.height=7.5, fig.width=10, warning=F}
+ggplot(subset(allnutrientNplot, nutrient %in% c("MHFIAP", "Ca", "Fe", "Niacin", "Vitamin B12")), aes(farmType, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(position = position_dodge(width = 1.1, preserve = "total"), size = 1, fatten = 5) + scale_shape_manual(values = c("MHFIAP" = 16, "Ca" = 17, "Fe" = 15, "Thiamine" = 1, "Riboflavin" = 2, "Niacin" = 0,  "Vitamin B6" =11, "Vitamin B12" = 9), guide = guide_legend(nrow = 1)) + ylab("Proportion of households severely food insecure \n or lacking a year-round 'source' of micronutrient") + xlab("Farm type") + facet_wrap(~AEZ) + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=16, family = "EB Garamond 08"), axis.title.y = element_text(size = 16, family = "EB Garamond 08"), axis.title.x = element_text(size = 16, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)# + stat_summary(data = subset(allnutrientNplot, nutrient %in% c("Ca")), aes(label=paste0('n = ',n.y), y = 0), geom='text', col = 'black', cex=5, family = "EB Garamond 08")
+
+
+```
+
+```{r, echo=F, fig.height=7.5, fig.width=10, warning=F}
+ggplot(subset(allnutrientNplot, nutrient %in% c("Thiamine", "Riboflavin", "Vitamin B6")), aes(farmType, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(position = position_dodge(width = 1.1, preserve = "total"), size = 1, fatten = 5) + scale_shape_manual(values = c("Ca" = 17, "Fe" = 15, "Thiamine" = 1, "Riboflavin" = 2, "Niacin" = 0,  "Vitamin B6" =11, "Vitamin B12" = 9)) + ylab("Proportion of households severely food insecure \n or lacking a year-round 'source' of micronutrient") + xlab("Farm type") + facet_wrap(~AEZ) + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(angle = 45, hjust =1, size=16, family = "EB Garamond 08"), axis.title.y = element_text(size = 16, family = "EB Garamond 08"), axis.title.x = element_text(size = 16, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0)
+```
+
+
+
+###For general discussion
+
+```{r, echo=F, fig.height=7, fig.width=10, warning=F}
+
+subDatNutrition <- group_by(subDatNutrition, nutrient, farmTypeScale, AEZ)
+microNplot <- left_join(summarise(subDatNutrition, n.x = sum(source)), summarise(subDatNutrition, n.y = sum(countVar)))
+microNplot$prop <- microNplot$n.x / microNplot$n.y
+#microNplot <- data.frame(avail = "full year", microNplot)
+
+
+#datProdConsNutrition$HFIAP <- gsub("Mildly food insecure", "Food secure", datProdConsNutrition$HFIAP)
+#datProdConsNutrition$HFIAP <- gsub("Moderately food insecure", "Food secure", datProdConsNutrition$HFIAP)
+#datProdConsNutrition$source <- ifelse(datProdConsNutrition$HFIAP == "Food secure", 1, 0)*datProdConsNutrition$weight
+#datProdConsNutrition$countVar <- 1*datProdConsNutrition$weight
+
+macroNplot <- group_by(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC"),], nutrient, farmTypeScale, AEZ)
+macroNplot$source <- ifelse(macroNplot$HFIAP == "Food secure", 1*macroNplot$weight, 0)
+macroNplot$countVar <- macroNplot$weight
+macroNplot <- left_join(summarise(macroNplot, n.x = sum(source)), summarise(macroNplot, n.y = sum(countVar)))
+macroNplot$prop <- macroNplot$n.x / macroNplot$n.y
+
+
+#macroNplot <- left_join(count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC"),], HFIAP, nutrient, farmType, AEZ), count(datProdConsNutrition[datProdConsNutrition$nutrient %in% c("ENERGY_KC", "PROCNT"),], nutrient, farmType, AEZ), by = c("nutrient", "farmType", "AEZ"))
+#macroNplot$prop <- macroNplot$n.x / macroNplot$n.y
+#colnames(microNplot)[1] <- "avail"
+#colnames(macroNplot)[1] <- "avail"
+
+allnutrientNplot <- rbind(microNplot, macroNplot)
+
+
+#allnutrientNplot$farmType <- factor(allnutrientNplot$farmType, levels = c("Specialised cropping", "Diverse cropping", "Specialised cropping & livestock", "Diverse cropping & livestock"), ordered = T)
+allnutrientNplot$nutrient <- gsub("CA", "Ca", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FE", "Fe", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ZN", "Zn", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("MG", "Mg", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("ENERGY_KC", "Chronic hunger", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VITA", "Vitamin A", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B12", "Vitamin B12", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("VIT.B6", "Vitamin B6", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("FOL", "Folate", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("NIA", "Niacin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("RIBF", "Riboflavin", allnutrientNplot$nutrient)
+allnutrientNplot$nutrient <- gsub("THIA", "Thiamine", allnutrientNplot$nutrient)
+
+allnutrientNplot$nutrient <- factor(allnutrientNplot$nutrient, levels = c("Chronic hunger", "Ca", "Fe", "Zn", "Cu", "Mg", "Vitamin A", "Vitamin C", "Thiamine", "Vitamin B6", "Riboflavin", "Niacin", "Folate", "Vitamin B12"), ordered = T)
+
+
+
+allnutrientNplot <- subset(allnutrientNplot, farmTypeScale %in% c("Specialised cropping & livestock small", "Specialised cropping & livestock medium-large", "Diverse cropping & livestock small", "Diverse cropping & livestock medium-large"))
+
+#numberHHs <- group_by(subset(allnutrientNplot, nutrient == "Ca"), farmTypeScale, AEZ)
+#numberHHs <- summarise(numberHHs, n = length(nutrient))
+
+allnutrientNplot$farmTypeScale <- gsub("& livestock ", "", allnutrientNplot$farmTypeScale)
+allnutrientNplot$farmTypeScale <- factor(allnutrientNplot$farmTypeScale, levels = c("Specialised cropping small", "Specialised cropping medium-large", "Diverse cropping small", "Diverse cropping medium-large"), ordered = T)
+
+ggplot(subset(allnutrientNplot, nutrient %in% c("Chronic hunger", "Ca", "Niacin", "Vitamin B12")), aes(farmTypeScale, 1-prop, ymin = (1-prop) - (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)) , ymax = (1-prop) + (qnorm(1-0.05/2)*sqrt((1-prop)*(prop)/n.y)), colour = nutrient, shape = nutrient)) + geom_pointrange(position = position_dodge(width = 1.1, preserve = "total"), size = 1, fatten = 5) + scale_shape_manual(values = c("Chronic hunger" = 16, "Ca" = 17, "Niacin" = 0, "Vitamin B12" = 9), guide = guide_legend(nrow = 1)) + ylab("Proportion of households chronically hungry \n or lacking a year-round 'source' of micronutrient") + xlab("Farm type and scale") + facet_wrap(~AEZ, ncol = 2) + scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=16, family = "EB Garamond 08"), axis.title.y = element_text(size = 16, family = "EB Garamond 08"), axis.title.x = element_text(size = 16, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.title = element_blank(), legend.position = "bottom", legend.key = element_rect(size = 5, color = NA), legend.key.size = unit(3, 'lines'), legend.text = element_text(family = "EB Garamond 08"), strip.text.x = element_text(size = 16, family = "EB Garamond 08")) + scale_colour_grey(start = 0.6, end = 0) #+ stat_summary(data = subset(allnutrientNplot, nutrient %in% c("Chronic hunger")), aes(label=paste0('n = ',n.y), y = 0), geom='text', col = 'black', cex=5, family = "EB Garamond 08")
+
+
+```
+
+
+
+####Revision
+
+
+```{r, echo=F, fig.height=5, fig.width=9, warning=F, cache=F}
+load('Models/HDDSnutrientDeterminantsNovRevisionsFinalAbsolute.rda')
+
+scaleScores <- scale(select(dat, adultEq, landcultivated, tlu, incomePPP), center = T, scale = T)
+
+cent <- attr(scaleScores, "scaled:center")
+sca <- attr(scaleScores, "scaled:scale")
+
+
+#@ change logTLU to tlu if using older model without random effects from project
+tlu <- ggpredict(modHDDSbad, terms = c("tlu", "AEZ"), pretty = T)
+tlug <- ggpredict(modHDDSgood, terms = c("tlu", "AEZ"), pretty = T)
+tlu$Period <- "Lean"
+tlug$Period <- "Good"
+tlu <- rbind(tlu, tlug)
+tlu$x <- tlu$x * sca["tlu"] + cent["tlu"] #uncentre and scale predictor
+
+
+land <- ggpredict(modHDDSbad, terms = c("landcultivated", "AEZ"), pretty = T)
+landg <- ggpredict(modHDDSgood, terms = c("landcultivated", "AEZ"), pretty = T)
+land$Period <- "Lean"
+landg$Period <- "Good"
+land <- rbind(land, landg)
+land$x <- land$x * sca["landcultivated"] + cent["landcultivated"]
+
+
+
+a <- ggpredict(modHDDSbad, terms = c("offIncomeBin", "AEZ"), pretty = T)
+ag <- ggpredict(modHDDSgood, terms = c("offIncomeBin", "AEZ"), pretty = T)
+a$Period <- "Lean"
+ag$Period <- "Good"
+a <- rbind(a, ag)
+
+
+b <- ggpredict(modHDDSbad, terms = c("incomePPP", "AEZ"), pretty = T)
+bg <- ggpredict(modHDDSgood, terms = c("incomePPP", "AEZ"), pretty = T)
+b$Period <- "Lean"
+bg$Period <- "Good"
+b <- rbind(b, bg)
+b$x <- b$x * sca["incomePPP"] + cent["incomePPP"]
+
+
+
+
+e <- ggpredict(modHDDSbad, terms = c("adultEq", "AEZ"), pretty = T)
+eg <- ggpredict(modHDDSgood, terms = c("adultEq", "AEZ"), pretty = T)
+e$Period <- "Lean"
+eg$Period <- "Good"
+e <- rbind(e, eg)
+e$x <- e$x * sca["adultEq"] + cent["adultEq"]
+
+
+f <- ggpredict(modHDDSbad, terms = c("cropProdDiv", "AEZ"), pretty = T)
+fg <- ggpredict(modHDDSgood, terms = c("cropProdDiv", "AEZ"), pretty = T)
+f$Period <- "Lean"
+fg$Period <- "Good"
+f <- rbind(f, fg)
+
+g <- ggpredict(modHDDSbad, terms = c("marketOrientationKcal", "AEZ"), pretty = T)
+gg <- ggpredict(modHDDSgood, terms = c("marketOrientationKcal", "AEZ"), pretty = T)
+g$Period <- "Lean"
+gg$Period <- "Good"
+g <- rbind(g, gg)
+
+
+
+mfxadultEq <- ggplot(e, aes(x, predicted, colour = Period, fill = Period)) + geom_line() + geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = .1, colour = NA) + facet_wrap(~group)+ ylab("Diet diversity") + xlab("Household inhabitants (male adult equivalent)") + ggtitle("") + scale_y_continuous(limits = c(0, 8)) + coord_cartesian(xlim = c(0, 40)) + themeLegendTrunc + theme(legend.position ="none") + scale_color_manual(values = c("grey74", "black")) + scale_fill_manual(values=c("Good"="grey51","Lean"="grey74")) #, breaks = c(0,2,4,6,8, 10)
+
+mfxtlu <- ggplot(tlu, aes(x, predicted, colour = Period, fill = Period)) + geom_line() + geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = .1, colour = NA) + facet_wrap(~group)+ ylab("Diet diversity") + xlab("Livestock holdings (TLU)") + ggtitle("") + scale_y_continuous(limits = c(0, 8)) + coord_cartesian(xlim = c(0, 100)) + themeLegendTrunc + theme(legend.position ="none") + scale_color_manual(values = c("grey74", "black")) + scale_fill_manual(values=c("Good"="grey51","Lean"="grey74"))
+
+mfxland <- ggplot(land, aes(x, predicted, colour = Period, fill = Period)) + geom_line() + geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = .1, colour = NA) + facet_wrap(~group)+ ylab("Diet diversity") + xlab("Land cultivated (ha)") + ggtitle("") + scale_y_continuous(limits = c(0, 8)) + coord_cartesian(xlim = c(0, 40)) + themeLegendTrunc + theme(legend.position ="none") + scale_color_manual(values = c("grey74", "black")) + scale_fill_manual(values=c("Good"="grey51","Lean"="grey74"))
+
+mfxmarketOri <- ggplot(g, aes(x, predicted, colour = Period, fill = Period)) + geom_line() + geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = .1, colour = NA) + facet_wrap(~group)+ ylab("Diet diversity") + xlab("Market participation (proportion kcal sold)") + ggtitle("") + scale_y_continuous(limits = c(0, 8)) + scale_x_continuous(limits = c(0,1), breaks = c(0.25, 0.5, 0.75, 1)) + themeLegendTrunc + theme(legend.position ="none") + scale_color_manual(values = c("grey74", "black")) + scale_fill_manual(values=c("Good"="grey51","Lean"="grey74"))
+
+mfxOffIncome <- ggplot(a, aes(as.factor(x), predicted, ymin =conf.low, ymax = conf.high, colour = Period)) + geom_pointrange() + facet_wrap(~group)+ ylab("Diet diversity") + xlab("Off farm income") + ggtitle("") + scale_y_continuous(limits = c(0, 8)) + scale_x_discrete(labels=c("No","Yes")) + themeLegendTrunc + theme(legend.position ="none") + scale_color_manual(values = c("grey74", "black")) + scale_fill_manual(values=c("Good"="grey51","Lean"="grey74"))
+
+mfxIncome <- ggplot(b, aes(x/1000, predicted, colour = Period, fill = Period)) + geom_line() + geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = .1, colour = NA) + facet_wrap(~group)+ ylab("Diet diversity") + xlab("Gross income (PPP '000)") + ggtitle("") + scale_y_continuous(limits = c(0, 8)) + coord_cartesian(xlim = c(0, 75)) + themeLegendTrunc + theme(legend.position ="none") + scale_color_manual(values = c("grey74", "black")) + scale_fill_manual(values=c("Good"="grey51","Lean"="grey74"))
+
+mfxCropDiv <- ggplot(f, aes(as.factor(round(x,0)), predicted, ymin =conf.low, ymax = conf.high, colour = Period)) + geom_pointrange() + facet_wrap(~group)+ ylab("Diet diversity") + xlab("Crop product diversity") + ggtitle("") + scale_y_continuous(limits = c(0, 8)) + themeLegendTrunc + theme(legend.position ="none")  + scale_colour_manual(values = c("grey74", "black"))
+
+mfxLvstDiv <- ggplot(d, aes(as.factor(x), predicted, ymin =conf.low, ymax = conf.high, colour = Period)) + geom_pointrange() + facet_wrap(~group)+ ylab("Diet diversity") + xlab("Livestock product diversity") + ggtitle("") + scale_y_continuous(limits = c(0, 8)) + themeLegendTrunc + theme(legend.position ="none") + scale_colour_manual(values = c("grey74", "black")) # , breaks = c(2,4,6,8,10)
+
+plot_grid(
+mfxadultEq
+,
+mfxland
+,
+mfxtlu
+,
+mfxCropDiv
+
+
+, align='hv', ncol = 2, labels="auto", hjust = 0, vjust=2,  label_fontfamily = "EB Garamond 08", rel_widths = c(1,1))
+```
+
+```{r, echo=F, fig.height=7.5, fig.width=9, warning=F}
+plot_grid(
+mfxIncome
+,
+mfxOffIncome
+,
+mfxmarketOri
+,
+mfxLvstDiv
+
+, align='hv', ncol = 2, labels="auto", hjust = 0, vjust=2,  label_fontfamily = "EB Garamond 08", rel_widths = c(1,1))
+```

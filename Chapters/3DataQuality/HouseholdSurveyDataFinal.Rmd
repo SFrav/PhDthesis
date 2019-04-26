@@ -1,0 +1,508 @@
+---
+title: "Household survey data: accuracy and consistency"
+output: #rmarkdown::tufte_handout
+  word_document:
+#    reference_docx: template.docx
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen=5)
+options(digits=2)
+```
+
+
+```{r imports, echo=F, warning=F, message=FALSE, comment=F}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(cowplot)
+library(tables)
+library(extrafont)
+library(pander)
+panderOptions("table.split.table", Inf)
+font_import(pattern="Garamond")
+#loadfonts(device="win")
+options(scipen = 999)
+
+themeTrunc <- theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=16, family = "EB Garamond 08"), title = element_text(family = "EB Garamond 08"), axis.text.y = element_text(size=16, family = "EB Garamond 08"), axis.title.y = element_text(size = 16, family = "EB Garamond 08"), axis.title.x = element_text(size = 16, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.position='none', strip.background = element_blank()) 
+
+themeLegendTrunc <- theme_bw() + theme(axis.text.x = element_text(hjust = 1, size=16, family = "EB Garamond 08"), title = element_text(family = "EB Garamond 08"), axis.text.y = element_text(size=16, family = "EB Garamond 08"), axis.title.y = element_text(family = "EB Garamond 08"), axis.title.x = element_text(family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), strip.background = element_blank(), legend.position="bottom") # axis.title.x = element_blank(), 
+# 
+
+##Prepare crop yield and price data
+# source('ImpLite_Lushoto/Comparison_ImpLite_CropYield_price.R', chdir = T)
+# cropDat2012Tanzania <- cropDat2012
+# source('Rhomis_Lushoto/Comparison_CroppingYield_Price.R', chdir = T)
+# source('ImpLite_Kenya/Comparison_ImpLite_CropYield_price_Nyando.R', chdir=T)
+# source('ImpLite_Kenya/Comparison_ImpLite_CropYield_price_Wote.R', chdir=T)
+# cropDat2012Kenya<-rbind(cropDat2012_Nyando,cropDat2012_Wote)
+# source('Rhomis_Kenya/CropYields_Prices_Kenya.R', chdir = T)
+# cropDatRhomisKenya <- crop_dat
+# 
+# write.csv(cropDat2012Tanzania, 'cropDats/cropDat2012Tanzania.csv')
+# write.csv(cropDat2012Kenya, 'cropDats/cropDat2012Kenya.csv')
+# write.csv(FFP_combinedCrop1, 'cropDats/FFP_combinedCrop1.csv')
+# write.csv(cropDatRhomisKenya, 'cropDats/cropDatRhomisKenya.csv')
+
+cropDatLSMS_Mid <- read.csv('LSMS_Uganda/LSMS_Uganda_CropInfoAreaYield_180217.csv', stringsAsFactors = F)
+cropDat2012Tanzania <- read.csv('cropDats/cropDat2012Tanzania.csv', stringsAsFactors = F)
+cropDat2012Kenya <- read.csv('cropDats/cropDat2012Kenya.csv', stringsAsFactors = F)
+FFP_combinedCrop1 <- read.csv('cropDats/FFP_combinedCrop1.csv', stringsAsFactors = F)
+cropDatRhomisKenya <- read.csv('cropDats/cropDatRhomisKenya.csv', stringsAsFactors = F)
+
+cropDat2012Tanzania$Country <- "Tanzania"
+cropDat2012Tanzania$survey <- "ImpactLite"
+cropDat2012Kenya$Country <- "Kenya"
+cropDat2012Kenya$survey <- "ImpactLite"
+cropDatRhomisKenya$Country <- "Kenya"
+cropDatRhomisKenya$survey <- "RHoMIS"
+FFP_combinedCrop1$Country <- "Tanzania"
+FFP_combinedCrop1$survey <- "RHoMIS"
+cropDatLSMS_Mid$Country <- "Uganda"
+cropDatLSMS_Mid$survey <- "LSMS"
+
+#Remove obs with no yield
+cropDat2012Tanzania <- subset(cropDat2012Tanzania, prod.kg > 0)
+cropDat2012Kenya <- subset(cropDat2012Kenya, prod.kg > 0)
+cropDatRhomisKenya <- subset(cropDatRhomisKenya, crop_yield_kg.ha >0 & !is.na(cropDatRhomisKenya$crop_yield_kg.ha))
+FFP_combinedCrop1 <- subset(FFP_combinedCrop1, yieldKG_Ha >0 & !is.na(yieldKG_Ha))
+cropDatLSMS_Mid <- subset(cropDatLSMS_Mid, prod.kg > 0 & !is.na(prod.kg))
+
+#Revise crop names before averaging by crop
+substr(cropDat2012Tanzania$cropN, 0,1) <- toupper(substr(cropDat2012Tanzania$cropN, 0,1))
+cropDat2012Tanzania$cropN <- gsub("Bananas", "Banana", cropDat2012Tanzania$cropN)
+
+substr(cropDat2012Kenya$cropN, 0,1) <- toupper(substr(cropDat2012Kenya$cropN, 0,1))
+cropDat2012Kenya$cropN <- gsub("Bananas", "Banana", cropDat2012Kenya$cropN)
+
+substr(cropDatRhomisKenya$crop_name, 0, 1) <- toupper(substr(cropDatRhomisKenya$crop_name, 0, 1))
+cropDatRhomisKenya$crop_name <- gsub("Pigeon_pea", "Pigeon pea", cropDatRhomisKenya$crop_name)
+
+FFP_combinedCrop1$crop_label <- gsub("Potatoes", "Potato", FFP_combinedCrop1$crop_label)
+FFP_combinedCrop1$crop_label <- gsub("Plantain", "Banana", FFP_combinedCrop1$crop_label)
+
+cropDatLSMS_Mid$cropN <- gsub("Banana sweet", "Banana", cropDatLSMS_Mid$cropN)
+cropDatLSMS_Mid$cropN <- gsub("Banana food", "Banana", cropDatLSMS_Mid$cropN)
+cropDatLSMS_Mid$cropN <- gsub("Cow peas", "Cowpea", cropDatLSMS_Mid$cropN)
+cropDatLSMS_Mid$cropN <- gsub("Pigeon peas", "Pigeon pea", cropDatLSMS_Mid$cropN)
+cropDatLSMS_Mid$cropN <- gsub("Irish potatoes", "Potato", cropDatLSMS_Mid$cropN)
+
+
+#Make it annual yield per ha per harvest 
+cropDat2012Tanzania <- group_by(cropDat2012Tanzania, hhid, Country, survey, cropN)
+cropDatBaseTanzania <- summarise_all(select(cropDat2012Tanzania, -cropT), funs(sum(., na.rm=T)))
+
+FFP_combinedCrop1 <- group_by(FFP_combinedCrop1, SECTION_META_householdID, Country, survey, crop_label)
+cropDatEndTanzania <- summarise_all(select_if(FFP_combinedCrop1, is.numeric), funs(sum(., na.rm=T)))
+
+cropDat2012Kenya <- group_by(cropDat2012Kenya, hhid, Country, survey, cropN)
+cropDatBaseKenya <- summarise_all(select_if(cropDat2012Kenya, is.numeric), funs(sum(., na.rm=T)))
+
+cropDatRhomisKenya <- group_by(cropDatRhomisKenya, hhid, Country, survey, crop_name)
+cropDatEndKenya <- summarise_all(select_if(cropDatRhomisKenya, is.numeric), funs(sum(., na.rm=T)))
+
+cropDatLSMS_Mid <- group_by(cropDatLSMS_Mid, hhid, Country, survey, cropN)
+cropDatLSMS_Mid <- summarise_all(select_if(cropDatLSMS_Mid, is.numeric), funs(sum(., na.rm=T)))
+
+#Price into USD                              
+cropDatBaseTanzania$price_KG <- (cropDatBaseTanzania$sold.LC / cropDatBaseTanzania$sold.kg) * 0.00046
+cropDatEndTanzania$price_KG <- (cropDatEndTanzania$crop_use_quanties_crop_sold_income / cropDatEndTanzania$soldKG) * 0.00046
+
+cropDatBaseKenya$price_KG <- (cropDatBaseKenya$sold.LC / cropDatBaseKenya$sold.kg) / 84
+cropDatEndKenya$price_KG <-  (cropDatEndKenya$crop_sale_income / (cropDatEndKenya$crop_sold_prop * cropDatEndKenya$crop_yield)) / 84 
+
+cropDatLSMS_Mid$price_KG <- (cropDatLSMS_Mid$sold.LC / cropDatLSMS_Mid$sold.kg) / 1919
+
+#Yield
+cropDatBaseTanzania$yieldKG_Ha <- cropDatBaseTanzania$prod.kg / cropDatBaseTanzania$area.ha
+cropDatEndTanzania$yieldKG_Ha <- cropDatEndTanzania$yieldKG / cropDatEndTanzania$hectares
+cropDatBaseKenya$yieldKG_Ha <- cropDatBaseKenya$prod.kg / cropDatBaseKenya$area.ha
+cropDatEndKenya$yieldKG_Ha <- cropDatEndKenya$crop_yield / cropDatEndKenya$landCult_ha
+cropDatLSMS_Mid$yieldKG_Ha <- cropDatLSMS_Mid$prod.kg / cropDatLSMS_Mid$area.ha
+
+cropDatRhomisKenya$hhid <- as.character(cropDatRhomisKenya$hhid)
+cropDatLSMS_Mid$hhid <- as.character(cropDatLSMS_Mid$hhid)
+
+cropDatcombined <- bind_rows(select(cropDatBaseTanzania, hhid, survey, Country, crop = cropN, yieldKG_Ha, price_KG), select(cropDatEndTanzania, hhid = SECTION_META_householdID, survey, Country, crop = crop_label, yieldKG_Ha, price_KG), select(cropDatBaseKenya, hhid, survey, Country, crop = cropN, yieldKG_Ha, price_KG), select(cropDatEndKenya, hhid, survey, Country, crop = crop_name, yieldKG_Ha = crop_yield_kg.ha, price_KG), select(cropDatLSMS_Mid, hhid, survey, Country, crop = cropN, yieldKG_Ha, price_KG))
+
+
+
+cropDatcombined <- subset(cropDatcombined, crop %in% c("Banana", "Beans", "Cowpea", "Maize", "Pigeon pea", "Potato", "Sorghum"))
+
+cropDatcombined$survey <- factor(cropDatcombined$survey, levels = c("ImpactLite", "RHoMIS", "LSMS"))
+
+#rm(list=setdiff(ls(), c("cropDatcombined", "themeTrunc", "cropDatLSMS_Mid")))
+
+
+
+```
+
+```{r, echo=F, fig.height=5, fig.width=9, warning=F}
+ggplot(cropDatcombined, aes(crop, yieldKG_Ha)) + geom_violin() + facet_wrap( ~ survey) + xlab("Crop") + ylab(bquote("Crop yield (kg "*ha^1*")")) + coord_cartesian(ylim = c(0, 7000)) + themeTrunc
+```
+
+```{r, echo=F, fig.height=5, fig.width=9, warning=F}
+ggplot(subset(cropDatcombined, price_KG >0 & price_KG < 2000), aes(crop, price_KG)) + geom_violin() + facet_wrap( ~ survey) + xlab("Crop") + ylab(bquote("Farm gate unit price (USD "*KG^1*")")) + coord_cartesian(ylim = c(0, 2)) + themeTrunc
+```
+
+
+##Credible ranges for yield and price
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+maizeDatcombined <- subset(cropDatcombined, crop == "Maize")
+comp_LSMS_Uganda_Mid <- read.csv('LSMS_Uganda/LSMS_200910_Baseline_merged_281016.csv')
+comp_LSMS_Uganda_Mid$hhid <- as.character(comp_LSMS_Uganda_Mid$hhid)
+maizeDatcombined <- left_join(maizeDatcombined, select(comp_LSMS_Uganda_Mid, hhid, region))
+
+maizeDatcombined$site <- ifelse(substr(maizeDatcombined$hhid, 0,4) == "KE01", "Nyando",
+                                ifelse(substr(maizeDatcombined$hhid, 0,4) == "KE02", "Wote",
+                                       ifelse(maizeDatcombined$Country == "Tanzania", "Lushoto", "Uganda")))
+
+maizeDatcombined
+
+source('CropYields/yieldMaximumCSV.R', chdir = T)
+cropYields_site <- subset(cropYields_site, CROP == "Rainfed maize")
+
+maizeDatcombined <- left_join(maizeDatcombined, cropYields_site)
+maizeDatcombined$YA <- maizeDatcombined$YA *1000
+maizeDatcombined$YW <- maizeDatcombined$YW *1000
+
+maizeDatcombined$site <- ifelse(maizeDatcombined$site == "Uganda", maizeDatcombined$region, maizeDatcombined$site)
+maizeDatcombined$price_KG[is.infinite(maizeDatcombined$price_KG)] <- NA
+priceDF <- data.frame(survey = c("ImpactLite", "RHoMIS", "LSMS"), maxprice = c(0.37, 0.51, 0.28))
+#, surveyPrice = c(0.32, 0.56, 0.15)
+
+maizeDatcombined <- left_join(maizeDatcombined, priceDF)
+
+maizeSurveyPrice <- group_by(maizeDatcombined, site, survey)
+maizeSurveyPrice <- subset(maizeSurveyPrice, price_KG < 5.5)
+maizeSurveyPrice <- summarise(maizeSurveyPrice, surveyPrice = mean(price_KG, na.rm=T))
+
+maizeDatcombined <- left_join(maizeDatcombined, maizeSurveyPrice)
+#maizeDatcombined$yieldUnder_Exceed <- ifelse((maizeDatcombined$yieldKG_Ha / maizeDatcombined$YW) > 1 & (maizeDatcombined$yieldKG_Ha / maizeDatcombined$YW) < 2, ">1 & <2", 
+#ifelse((maizeDatcombined$yieldKG_Ha / maizeDatcombined$YW) > 2, ">2", ifelse((maizeDatcombined$yieldKG_Ha / maizeDatcombined$YA) < 0.1, "<0.1YA", ifelse((maizeDatcombined$yieldKG_Ha / maizeDatcombined$YA) > 0.1 & (maizeDatcombined$yieldKG_Ha / maizeDatcombined$YA) < 0.5, "<0.5YA", "other"))))
+
+
+maizeDatcombined$yieldUnder_Exceed <- ifelse((maizeDatcombined$yieldKG_Ha / maizeDatcombined$YW) > 1 & (maizeDatcombined$yieldKG_Ha / maizeDatcombined$YW) < 2, ">1 & <2", 
+ifelse((maizeDatcombined$yieldKG_Ha / maizeDatcombined$YW) > 2, ">2", ifelse((maizeDatcombined$yieldKG_Ha / maizeDatcombined$YA) < 0.1, "<0.1YA", "other")))
+
+#@Check whether irrigation explains households exceeding Yw
+# Rh_Wote_dat <- read.csv(file="Rhomis_Kenya/Rh_v1_1_5_Kenya_2017_01_18_09_19_14.csv", na.strings = c("n/a","<NA>"))
+# Rh_Nyando_dat <- read.csv(file="Rhomis_Kenya/Rh_v1_1_5_Kenya_Ny_2017_01_18_09_21_58.csv", na.strings = c("n/a","<NA>"))
+# Rh_kenya <- rbind(select(Rh_Wote_dat, hhid = SECTION_META.householdID, irri = Irrigation.land_irrigated), select(Rh_Nyando_dat, hhid = SECTION_META.HHID_group.householdID, irri = Irrigation.land_irrigated))
+# 
+# maizeDatcombined <- left_join(maizeDatcombined, Rh_kenya)
+
+yieldTable <- prop.table(table(maizeDatcombined$survey, maizeDatcombined$yieldUnder_Exceed), 1)
+
+# KenyaIrri <- prop.table(table(maizeDatcombined$irri[maizeDatcombined$Country == "Kenya" & maizeDatcombined$survey == "RHoMIS"], maizeDatcombined$yieldUnder_Exceed[maizeDatcombined$Country == "Kenya" & maizeDatcombined$survey == "RHoMIS"]), 1)
+
+maizeDatcombined$priceUnder_Exceed <- ifelse(maizeDatcombined$price_KG / maizeDatcombined$maxprice > 1 & maizeDatcombined$price_KG / maizeDatcombined$maxprice <2, ">1 & < 2", ifelse(maizeDatcombined$price_KG / maizeDatcombined$maxprice >2, ">2", ifelse(maizeDatcombined$price_KG / maizeDatcombined$surveyPrice < 0.1, "<0.1", "other")))
+
+priceTable <- prop.table(table(maizeDatcombined$survey, maizeDatcombined$priceUnder_Exceed), 1)
+
+maizeSurveyPriceTool <- group_by(maizeDatcombined, survey)
+maizeSurveyPriceTool <- subset(maizeSurveyPriceTool, price_KG < 5.5)
+maizeSurveyPriceTool <- summarise(maizeSurveyPriceTool, surveyPrice = mean(price_KG, na.rm=T), sdev = sd(price_KG, na.rm=T))
+
+```
+Yield table
+```{r, warning=FALSE, echo=F}
+
+pander(yieldTable)
+```
+Price table(
+```{r, warning=FALSE, echo=F}
+
+pander(priceTable)
+
+```
+
+Yield thresholds
+```{r, warning=FALSE, echo=F}
+
+pander(cropYields_site)
+
+```
+
+price thresholds
+```{r, warning=FALSE, echo=F}
+
+pander(maizeSurveyPriceTool)
+
+```
+
+#FA & FSS table
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+comp_Imp_Rh_Tanzania <- read.csv('comp_Imp_Rh_TZ.csv', stringsAsFactors = F)
+comp_Imp_Rh_Kenya <- read.csv('comp_Imp_Rh_Kenya.csv', stringsAsFactors = F)
+
+comp_LSMS_Uganda_Mid <- read.csv('LSMS_Uganda/LSMS_200910_Baseline_merged_281016.csv')
+
+#colnames(comp_LSMS_Uganda_Mid)[grep("tot_energy", colnames(comp_LSMS_Uganda_Mid))] <- "FA.Mid"
+comp_LSMS_Uganda_Mid$FA.Mid <- comp_LSMS_Uganda_Mid$tot_energy /(365* comp_LSMS_Uganda_Mid$Adult_Equivalent)
+comp_LSMS_Uganda_Mid$FSS.Mid <- rowSums(comp_LSMS_Uganda_Mid[, c("energy_crop_cons", "energy_lvst_cons")], na.rm=T) / comp_LSMS_Uganda_Mid$HH_energy_need
+
+comp_Imp_Rh_Tanzania$FSS2012 <- rowSums(comp_Imp_Rh_Tanzania[, c("cropCons_kcal2012", "lvstCons_kcal2012")], na.rm=T) / (comp_Imp_Rh_Tanzania$adult_eq2012 * 2500 * 365)
+comp_Imp_Rh_Tanzania$FSS2015 <- rowSums(comp_Imp_Rh_Tanzania[, c("cropCons_kcal2015", "lvstCons_kcal2015")], na.rm=T) / (comp_Imp_Rh_Tanzania$adult_eq2015 * 2500 * 365)
+comp_Imp_Rh_Kenya$FSS2012 <- rowSums(comp_Imp_Rh_Kenya[, c("cropCons_kcal2012", "lvstCons_kcal2012")], na.rm=T) / (comp_Imp_Rh_Kenya$adult_eq2012 * 2500 * 365)
+comp_Imp_Rh_Kenya$FSS2015 <- rowSums(comp_Imp_Rh_Kenya[, c("cropCons_kcal2015", "lvstCons_kcal2015")], na.rm=T) / (comp_Imp_Rh_Kenya$adult_eq2015 * 2500 * 365)
+
+
+#comp_Imp_Rh_Tanzania$headGenderChange <- as.factor(comp_Imp_Rh_Tanzania$headGenderChange)
+comp_LSMS_Uganda_Mid$hhid <- as.character(comp_LSMS_Uganda_Mid$hhid)
+comp_LSMS_Uganda_Mid$district <- as.character(comp_LSMS_Uganda_Mid$district)
+compBase_End <- bind_rows(comp_Imp_Rh_Tanzania, comp_Imp_Rh_Kenya)
+#rm(list=setdiff(ls(),c('compBase_End', "themeTrunc")))
+
+colnames(compBase_End) <- gsub("2012", ".Impact", colnames(compBase_End))
+colnames(compBase_End) <- gsub("2015", ".Rhomis", colnames(compBase_End))
+
+compBase_End <- bind_rows(compBase_End, comp_LSMS_Uganda_Mid)
+colnames(compBase_End) <- gsub("Mid", "LSMS", colnames(compBase_End))
+
+compGather <- compBase_End %>% select(hhid, FA.Impact, FA.Rhomis, FA.LSMS, FSS.Impact, FSS.Rhomis, FSS.LSMS) %>% gather(variable, value, c(FA.Impact, FA.Rhomis, FA.LSMS, FSS.Impact, FSS.Rhomis, FSS.LSMS))
+
+
+
+#compGather <- subset(compGather, !is.na(value))
+
+compGather <- separate(compGather, variable, c("var", "survey"))
+
+compGather$value[compGather$value < 1 & compGather$var == "FA"] <- NA
+compGather$foodUnder_exceed <- ifelse(compGather$value < 2500*0.5 & compGather$var == "FA", "Insufficient", "Sufficient")  
+
+compGather$foodUnder_exceed <- ifelse(compGather$value > 2 & compGather$var == "FSS", "> Two x", ifelse(compGather$value > 1.4 & compGather$value < 2 & compGather$var == "FSS", ">3500 OECD",  compGather$foodUnder_exceed))  
+
+FAtable <- prop.table(table(compGather$survey[compGather$var == "FA"], compGather$foodUnder_exceed[compGather$var == "FA"]), 1)
+FSStable <- prop.table(table(compGather$survey[compGather$var == "FSS"], compGather$foodUnder_exceed[compGather$var == "FSS"]), 1)
+#Long ifelse here basel metabolic rate for the lower and ...
+
+#compBase_Endgather <- compBase_End %>% select(Country, diffHeadAge, diffHDDSbad, diffHDDSgood, diffTLU, diffTLU, diffAdultEq, diffLandOwned, diffPercOffIncome, diffoffIncome) %>% gather(variable, value, c(diffHeadAge, diffHDDSbad, diffHDDSgood, diffTLU, diffTLU, diffAdultEq, diffLandOwned, diffPercOffIncome, diffoffIncome))
+```
+
+FA table
+```{r, warning=FALSE, echo=F}
+
+pander(FAtable)
+
+```
+sep
+```{r, warning=FALSE, echo=F}
+
+pander(FSStable)
+
+```
+
+##Consistency
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+source('HDDSdifference.R', chdir = T)
+
+```
+
+```{r, echo=F, fig.height=3.5, fig.width=9, warning=F}
+
+
+plot_grid(
+ggplot(HDDS2012_2015good, aes(x=foodGroup)) + geom_bar()  + scale_fill_grey(start = 0.8, end = 1) + coord_cartesian(ylim = c(0, 151)) + facet_grid(". ~ Year") + labs(title="Post-harvest period", x = "Food group", y = "Count of households consuming") +theme_bw() + theme(axis.text.x = element_text(angle = 90, hjust = 1, size=11, family = "EB Garamond 08"), title = element_text(family = "EB Garamond 08"), axis.text.y = element_text(size=16, family = "EB Garamond 08"), axis.title.y = element_text(size = 16, family = "EB Garamond 08"), axis.title.x = element_text(size = 16, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.position='none', strip.background = element_blank())  #+ themeTrunc
+,
+ggplot(HDDS2012_2015bad, aes(x=foodGroup)) + geom_bar()  + scale_fill_grey(start = 0.8, end = 1) + coord_cartesian(ylim = c(0, 151))  + facet_grid(". ~ Year") + labs(title="Lean period", x = "Food group", y = "Count of households consuming") +theme_bw() + theme(axis.text.x = element_text(angle = 90, hjust = 1, size=11, family = "EB Garamond 08"), title = element_text(family = "EB Garamond 08"), axis.text.y = element_text(size=16, family = "EB Garamond 08"), axis.title.y = element_text(size = 16, family = "EB Garamond 08"), axis.title.x = element_text(size = 16, family = "EB Garamond 08"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_blank(), axis.line.x = element_line(colour = 'black'), axis.line.y = element_line(colour = 'black'), legend.position='none', strip.background = element_blank())  #+ themeTrunc
+
+, align='hv', ncol = 2, labels= 'auto', hjust = -2, vjust=21)
+
+```
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+source('HDDSdifference_Kenya.R', chdir = T)
+
+```
+
+#Kenya
+```{r, echo=F, fig.height=3, fig.width=8, warning=F}
+
+
+plot_grid(
+ggplot(HDDS2012_2015good, aes(x=foodGroup)) + geom_bar()  + scale_fill_grey(start = 0.8, end = 1) + theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 11), axis.text.y = element_text(size=12)) + coord_cartesian(ylim = c(0, 151)) + facet_grid(". ~ Year") + labs(title="Consumption by category - good season", x = "Food group", y = "Count of households consuming")
+,
+ggplot(HDDS2012_2015bad, aes(x=foodGroup)) + geom_bar()  + scale_fill_grey(start = 0.8, end = 1) + theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 11), axis.text.y = element_text(size=12)) + coord_cartesian(ylim = c(0, 151))  + facet_grid(". ~ Year") + labs(title="Consumption by category -  bad season", x = "Food group", y = "Count of households consuming")
+, align='hv', ncol = 2, labels= 'auto', hjust = -2, vjust=21)
+
+```
+
+
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+#source('Consistency_TZ.R', chdir = T)
+#source('Consistency_KNY.R', chdir = T)
+comp_Imp_Rh_Tanzania <- read.csv('comp_Imp_Rh_TZ.csv', stringsAsFactors = F)
+comp_Imp_Rh_Kenya <- read.csv('comp_Imp_Rh_Kenya.csv', stringsAsFactors = F)
+maizeDatcombined[maizeDatcombined$survey %in% c("ImpactLite", "RHoMIS"),]
+maizeDatcombined$survey <- ifelse(maizeDatcombined$survey == "ImpactLite", "yieldKG_Ha2012", "yieldKG_Ha2015")
+maizeDatcombinedWide <- spread(select(maizeDatcombined, hhid, survey, yieldKG_Ha), survey, yieldKG_Ha)
+
+comp_Imp_Rh_Kenya <- left_join(comp_Imp_Rh_Kenya, maizeDatcombinedWide)
+comp_Imp_Rh_Tanzania <- left_join(comp_Imp_Rh_Tanzania, maizeDatcombinedWide)
+
+source('Consistency_UG.R')
+
+comp_Imp_Rh_Tanzania$FSS2012 <- rowSums(comp_Imp_Rh_Tanzania[, c("cropCons_kcal2012", "lvstCons_kcal2012")]) / (comp_Imp_Rh_Tanzania$adult_eq2012 * 2500 * 365)
+comp_Imp_Rh_Tanzania$FSS2015 <- rowSums(comp_Imp_Rh_Tanzania[, c("cropCons_kcal2015", "lvstCons_kcal2015")]) / (comp_Imp_Rh_Tanzania$adult_eq2015 * 2500 * 365)
+comp_Imp_Rh_Kenya$FSS2012 <- rowSums(comp_Imp_Rh_Kenya[, c("cropCons_kcal2012", "lvstCons_kcal2012")]) / (comp_Imp_Rh_Kenya$adult_eq2012 * 2500 * 365)
+comp_Imp_Rh_Kenya$FSS2015 <- rowSums(comp_Imp_Rh_Kenya[, c("cropCons_kcal2015", "lvstCons_kcal2015")]) / (comp_Imp_Rh_Kenya$adult_eq2015 * 2500 * 365)
+
+
+comp_LSMS_Uganda$hhid <- as.character(comp_LSMS_Uganda$hhid)
+compBase_End <- bind_rows(comp_Imp_Rh_Tanzania, comp_Imp_Rh_Kenya, comp_LSMS_Uganda)
+#rm(list=setdiff(ls(),c('compBase_End', "themeTrunc")))
+
+compBase_End$diffTLU <- compBase_End$tlu2015 - compBase_End$tlu2012
+compBase_End$diffAdultEq <- compBase_End$adult_eq2015 - compBase_End$adult_eq2012
+compBase_End$diffLandOwned <- compBase_End$landOwnedHa2015 - compBase_End$landOwnedHa2012
+
+compBase_End$diffFA <- compBase_End$FA2015 - compBase_End$FA2012
+compBase_End$diffoffIncome <- compBase_End$offIncome2015 - compBase_End$offIncome2012
+compBase_End$diffHeadAge <- ifelse(compBase_End$headGenderChange ==0 & compBase_End$Country == "Uganda", compBase_End$HHheadAge2015 - 2 - compBase_End$HHheadAge2012, ifelse(compBase_End$headGenderChange ==0 & compBase_End$Country != "Uganda", compBase_End$HHheadAge2015 - 3 - compBase_End$HHheadAge2012, NA))
+
+colnames(compBase_End) <- gsub("2012", ".Base", colnames(compBase_End))
+colnames(compBase_End) <- gsub("2015", ".End", colnames(compBase_End))
+
+compBase_End$survey <- ifelse(compBase_End$Country %in% c("Kenya", "Tanzania"), "IMPACTlite(2012)-\nRHOMIS(2015/16)", "LSMS-ISA(2009/10)-\n(2011/12)")
+
+compBase_End$baseNon_resp <- ifelse(compBase_End$landOwnedHa.Base == 0 & compBase_End$FSS.Base > 0, 1, 0)
+compBase_End$endNon_resp <- ifelse(compBase_End$landOwnedHa.End == 0 & compBase_End$FSS.End > 0, 1, 0)
+
+compBase_End$endNon_resp <- ifelse(compBase_End$landOwnedHa.End == 0 & compBase_End$tlu.End < 1 & compBase_End$FSS.End > 0, 1, 0)
+#The three households with no land but some level of FSS owned at least one TLU. This is possible as the livestock could be kept elsewhere.
+
+
+compBase_Endgather <- compBase_End %>% select(survey, diffHeadAge, diffTLU, diffAdultEq, diffLandOwned, diffFA, diffoffIncome) %>% gather(variable, value, c(diffHeadAge, diffTLU, diffAdultEq, diffLandOwned, diffFA, diffoffIncome))
+
+compBase_Endgather$value[is.infinite(compBase_Endgather$value)] <- NA
+
+changeSummary <- group_by(compBase_Endgather, variable, survey)
+changeSummary <- summarise_if(changeSummary, is.numeric, funs(median, IQR, min, max), na.rm=T)
+
+
+
+```
+Change summary
+```{r, warning=FALSE, echo=F}
+
+pander(changeSummary)
+
+```
+
+
+#Scatter plot
+
+```{r, echo=F, fig.height=11, fig.width=8, warning=F}
+compBase_End <- group_by(compBase_End, survey)
+corAge <- summarise(subset(compBase_End, headGenderChange !=1 & abs(HHheadAge.Base - HHheadAge.End) < 17), corV = round(cor.test(HHheadAge.Base, HHheadAge.End, method ="spearman")$estimate, 2))
+corAdult <- summarise(compBase_End, corV = round(cor.test(adult_eq.Base, adult_eq.End, method ="spearman")$estimate, 2))
+#corTLU <- summarise(subset(compBase_End, compBase_End$tlu.End < 200 & compBase_End$tlu.Base < 200), corV = round(cor(tlu.Base, tlu.End, use = "complete.obs"), 2))
+corTLU <- summarise(compBase_End, corV = round(cor.test(tlu.Base, tlu.End, method ="spearman")$estimate, 2))
+
+corLand <- summarise(compBase_End, corV = round(cor.test(landOwnedHa.Base, landOwnedHa.End, method ="spearman")$estimate, 2))
+
+corYield <- summarise(subset(compBase_End, !is.na(yieldKG_Ha.Base) & yieldKG_Ha.Base > 100 & !is.na(yieldKG_Ha.End) & yieldKG_Ha.End >100), corV = round(cor.test(yieldKG_Ha.Base, yieldKG_Ha.End, method ="spearman")$estimate, 2))
+
+corOff <- summarise(compBase_End, corV = round(cor.test(offIncome.Base, offIncome.End, method ="spearman")$estimate, 2))
+corFA <- summarise(compBase_End, corV = round(cor.test(FA.Base, FA.End, method ="spearman")$estimate, 2))
+corFSS <- summarise(subset(compBase_End, !is.na(FSS.Base) & !is.na(FSS.Base)), corV = round(cor.test(FSS.Base, FSS.End, method ="spearman")$estimate, 2))
+
+
+plot_grid(
+ggplot(subset(compBase_End, headGenderChange !=1 & abs(HHheadAge.Base - HHheadAge.End) < 17), aes(HHheadAge.Base, HHheadAge.End)) + geom_point() + ylab("Age of household head re-visit") + xlab("Age of household head initial visit") + facet_wrap(~survey) + geom_abline(intercept = 0, slope = 1) + coord_cartesian(xlim = c(20,100), ylim = c(20,100))  + geom_text(data = corAge, aes(x = 28, y = 99, label=sprintf("%.2f", corV))) + themeTrunc
+,
+ggplot(compBase_End, aes(adult_eq.Base, adult_eq.End)) + geom_point() + ylab("Household size revisit (adult eq)") + xlab("Household size initial visit (Adult eq)") + facet_wrap(~survey) + geom_abline(intercept = 0, slope = 1) + coord_cartesian(xlim = c(0,20), ylim = c(0,20)) + geom_text(data = corAdult, aes(x = 2, y = 19, label=sprintf("%.2f", corV))) + themeTrunc
+,
+ggplot(subset(compBase_End, landOwnedHa.Base != 0 & landOwnedHa.End != 0), aes(landOwnedHa.Base, landOwnedHa.End)) + geom_point()  + ylab("Land owned revisit (ha)") + xlab("Land owned initial visit (ha)") + facet_wrap(~survey) + geom_abline(intercept = 0, slope = 1) + coord_cartesian(xlim = c(0,20), ylim = c(0,20)) + geom_text(data = corLand, aes(x = 2, y = 19, label=sprintf("%.2f", corV))) + themeTrunc
+,
+ggplot(compBase_End, aes(tlu.Base, tlu.End)) + geom_point() + ylab("Livestock holdings revisit (TLU)") + xlab("Livestock holdings initial visit (TLU)") + facet_wrap(~survey) + geom_abline(intercept = 0, slope = 1) + coord_cartesian(xlim = c(0,20), ylim = c(0,20)) + geom_text(data = corTLU, aes(x = 2, y = 19, label=sprintf("%.2f", abs(corV)))) + themeTrunc
+,
+ggplot(subset(compBase_End, !is.na(yieldKG_Ha.Base) & yieldKG_Ha.Base > 100 & !is.na(yieldKG_Ha.End) & yieldKG_Ha.End >100), aes(yieldKG_Ha.Base / 1000, yieldKG_Ha.End / 1000)) + geom_point() + ylab(bquote("Maize yield revisit (tons "*ha^-1*")")) + xlab(bquote("Maize yield initial visit (tonnes "*ha^-1*")")) + facet_wrap(~survey) + geom_abline(intercept = 0, slope = 1) + coord_cartesian(xlim = c(0,7), ylim = c(0,7)) + geom_text(data = corYield, aes(x = 4, y = 6.5, label=sprintf("%.2f", corV))) + themeTrunc
+,
+ggplot(compBase_End, aes(offIncome.Base/1000, offIncome.End / 1000)) + geom_point() + ylab("Off-farm income revisit (USD '000)") + xlab("Off-farm income initial visit (USD '000)") + facet_wrap(~survey) + geom_abline(intercept = 0, slope = 1) +  geom_text(data = corOff, aes(x = 4, y = 9, label=sprintf("%.2f", corV))) + scale_x_continuous(limits = c(0, 10), breaks = seq(0, 10, by = 2)) + scale_y_continuous(limits = c(0, 10), breaks = seq(0, 10, by = 2)) + themeTrunc
+,
+ggplot(compBase_End, aes(FA.Base/2500, FA.End/2500)) + geom_point() + ylab(bquote("Food availability revisit (2500 "*kcalMAE^-1*")")) + xlab(bquote("Food availability initial visit (2500 "*kcalMAE^-1*")")) + facet_wrap(~survey) + geom_abline(intercept = 0, slope = 1) + coord_cartesian(xlim = c(0,70), ylim = c(0,70)) + themeTrunc + geom_text(data = corFA, aes(x = 30, y = 65, label=sprintf("%.2f", corV)))
+,
+ggplot(compBase_End, aes(FSS.Base, FSS.End)) + geom_point() + ylab(bquote("Food self-sufficiency revisit (2500 "*kcalMAE^-1*")")) + xlab(bquote("Food self-sufficiency initial visit (2500 "*kcalMAE^-1*")")) + facet_wrap(~survey) + geom_abline(intercept = 0, slope = 1) +  geom_text(data = corFSS, aes(x = 1, y = 4, label=sprintf("%.2f", corV))) + scale_x_continuous(limits = c(0, 5), breaks = seq(0, 5, by = 1)) + scale_y_continuous(limits = c(0, 5), breaks = seq(0, 5, by = 1)) + themeTrunc
+, align='hv', ncol = 2, labels= 'auto', hjust = -4.5, vjust=1) 
+
+```
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+source('Consistency_UG3panel.R')
+
+cropDatLSMS_base <- read.csv('LSMS_Uganda/LSMS_200910_cropprod_maize_270317.csv', stringsAsFactors = F)
+cropDatLSMS_mid <- read.csv('LSMS_Uganda/LSMS_201011_cropprod_maize_270317.csv', stringsAsFactors = F)
+cropDatLSMS_end <- read.csv('LSMS_Uganda/LSMS_201112_cropprod_maize_270317.csv', stringsAsFactors = F)
+
+cropDatLSMS_base <- subset(cropDatLSMS_base, area.ac > 0 & prod.kg > 0)
+cropDatLSMS_mid <- subset(cropDatLSMS_mid, area.ac > 0 & prod.kg > 0)
+cropDatLSMS_end <- subset(cropDatLSMS_end, area.ac > 0 & prod.kg > 0)
+
+cropDatLSMS_base <- group_by(cropDatLSMS_base, hhid)
+cropDatLSMS_base <- summarise_all(select_if(cropDatLSMS_base, is.numeric), funs(sum(., na.rm=T)))
+cropDatLSMS_mid <- group_by(cropDatLSMS_mid, hhid)
+cropDatLSMS_mid <- summarise_all(select_if(cropDatLSMS_mid, is.numeric), funs(sum(., na.rm=T)))
+cropDatLSMS_end <- group_by(cropDatLSMS_end, hhid)
+cropDatLSMS_end <- summarise_all(select_if(cropDatLSMS_end, is.numeric), funs(sum(., na.rm=T)))
+
+cropDatLSMS_base <- subset(cropDatLSMS_base, area.ac > 0 & prod.kg > 0)
+cropDatLSMS_mid <- subset(cropDatLSMS_mid, area.ac > 0 & prod.kg > 0)
+cropDatLSMS_end <- subset(cropDatLSMS_end, area.ac > 0 & prod.kg > 0)
+
+cropDatLSMS_base$yieldKG_Ha.Base <- cropDatLSMS_base$prod.kg / cropDatLSMS_base$area.ha
+cropDatLSMS_mid$yieldKG_Ha.Mid <- cropDatLSMS_mid$prod.kg / cropDatLSMS_mid$area.ha
+cropDatLSMS_end$yieldKG_Ha.End <- cropDatLSMS_end$prod.kg / cropDatLSMS_end$area.ha
+
+comp_LSMS_Uganda <- left_join(comp_LSMS_Uganda, select(cropDatLSMS_base, hhid, yieldKG_Ha.Base))
+comp_LSMS_Uganda <- left_join(comp_LSMS_Uganda, select(cropDatLSMS_mid, hhid, yieldKG_Ha.Mid))
+comp_LSMS_Uganda <- left_join(comp_LSMS_Uganda, select(cropDatLSMS_end, hhid, yieldKG_Ha.End))
+
+```
+
+
+
+```{r, echo=F, fig.height=3, fig.width=4, warning=F}
+load('models/icc.rda')
+
+ggplot(reliabilityEstimates, aes(variable, ICC)) + geom_point() + geom_errorbar(aes(ymin = `lower bound`, ymax = `upper bound`), width = 0) + scale_y_continuous(limits = c(0,1), breaks = c(0, 0.25, 0.5, 0.75, 1)) + coord_flip() +ylab("Reliability") + xlab("") + themeTrunc
+
+```
+
+
+```{r, echo=F, warning=F, message=FALSE, comment=F}
+library(pwr)
+library(ggplot2)
+
+#relia <- c(0.1,0.5,0.9)
+eff <- seq(0.1,1, by = 0.1)
+
+#pwr.t.test(d = 0.1, power = 0.8, type = "paired")
+
+nDF <- data.frame(eff = rep(eff, 3), n = NA, nTwo = NA, Reliability = c(rep(0.1, length(eff)), rep(0.5, length(eff)), rep(0.9, length(eff))))
+for(i in 1:nrow(nDF)){
+  nDF[i, "n"] <- pwr.t.test(d = nDF[i,"eff"]*sqrt(nDF[i,"Reliability"]), power = 0.8, type = "paired")$n
+  nDF[i, "nTwo"] <- pwr.t.test(d = nDF[i,"eff"]*sqrt(nDF[i,"Reliability"]), power = 0.8, type = "two.sample")$n
+}
+
+
+
+```
+
+```{r, echo=F, fig.height=3, fig.width=4, warning=F}
+
+ggplot(nDF, aes(log10(n), eff, group = Reliability)) + geom_line() + coord_cartesian(xlim = c(0, 4)) + xlab(bquote("log"[10]*"of sample size")) + ylab("Effect size") + ggtitle("Paired") + themeLegendTrunc 
+ggplot(nDF, aes(log10(nTwo), eff, group = Reliability)) + geom_line() + coord_cartesian(xlim = c(1, 4.5)) + xlab(bquote("log"[10]*"of sample size")) + ylab("Effect size") + ggtitle("Two-sample") + themeLegendTrunc
+
+```
+
+#To replicate article figure, export these plots manually with 440 x 290
+```{r, echo=F, fig.height=3, fig.width=4, warning=F}
+nDF$Reliability <- as.factor(nDF$Reliability)
+ggplot(nDF, aes(n, eff, group = Reliability)) + geom_line(aes(linetype = Reliability)) + coord_cartesian(xlim = c(0, 2000)) + xlab(bquote("Sample size")) + ylab("Effect size") + ggtitle("Paired") + themeLegendTrunc + scale_linetype_manual(values=c("dotted", "twodash", "solid"))
+ggplot(nDF, aes(nTwo, eff, group = Reliability)) + geom_line(aes(linetype = Reliability)) + coord_cartesian(xlim = c(1, 4000)) + xlab(bquote("Sample size")) + ylab("Effect size") + ggtitle("Two-sample") + themeLegendTrunc  + scale_linetype_manual(values=c("dotted", "twodash", "solid"))
+
+```
